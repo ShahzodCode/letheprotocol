@@ -1,0 +1,21 @@
+.godot/
+.shots/
+.import/
+*.translation
+export_presets.cfg
+/android/
+docs_backup/
+# private / not for the public repo
+The Story/
+PROMPTS.md
+x
+.claude/
+*.docx
+*.log
+*.tmp
+.env
+*.key
+*.pem
+
+# third-party models (licences unchecked, see CREDITS.md)
+models/

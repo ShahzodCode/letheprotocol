@@ -1,0 +1,895 @@
+{
+	"meta": {
+		"aa": 0.0,
+		"calm": true,
+		"cores": 16.0,
+		"cpu": "13th Gen Intel(R) Core(TM) i7-13620H",
+		"driver": "opengl3",
+		"godot": "4.7.2-stable (official)",
+		"method": "gl_compatibility",
+		"name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+		"os": "Windows 10.0.26200",
+		"plain": false,
+		"scale_pct": 100.0,
+		"seed": "12345",
+		"shadows": 2.0,
+		"type": "other",
+		"vendor": "NVIDIA",
+		"video_mem_mb": 112.3,
+		"view": 1.0,
+		"vsync": false,
+		"window": "(1280, 720)"
+	},
+	"modes": {
+		"calm_forward_plus": {
+			"per_run_median_ms": {
+				"avenue": [
+					8.34,
+					8.34,
+					8.34
+				],
+				"cellar": [
+					8.34,
+					8.33,
+					8.33
+				],
+				"fire": [
+					8.34,
+					8.34,
+					8.37
+				],
+				"lobby": [
+					8.34,
+					8.34,
+					8.33
+				],
+				"roof": [
+					8.34,
+					8.34,
+					8.33
+				],
+				"site70": [
+					8.33,
+					8.34,
+					8.34
+				]
+			},
+			"runs": 3,
+			"spots": {
+				"avenue": {
+					"draw_calls": 676.0,
+					"enemies": 56.0,
+					"frame_ms_max": 9.322,
+					"frame_ms_median": 8.338,
+					"frame_ms_p95": 8.628,
+					"frame_ms_p99": 8.852,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 678.0,
+					"physics_ms": 0.9,
+					"primitives": 279664.0,
+					"render_cpu_ms": 1.08500003814697,
+					"render_gpu_ms": 1.70000004768372,
+					"script_ms": 8.12,
+					"video_mem_mb": 222.100570678711
+				},
+				"cellar": {
+					"draw_calls": 549.0,
+					"enemies": 56.0,
+					"frame_ms_max": 9.294,
+					"frame_ms_median": 8.332,
+					"frame_ms_p95": 8.576,
+					"frame_ms_p99": 8.836,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 587.0,
+					"physics_ms": 0.848,
+					"primitives": 279971.0,
+					"render_cpu_ms": 0.991999983787537,
+					"render_gpu_ms": 1.61300003528595,
+					"script_ms": 8.253,
+					"video_mem_mb": 222.107604980469
+				},
+				"fire": {
+					"draw_calls": 546.0,
+					"enemies": 56.0,
+					"frame_ms_max": 17.058,
+					"frame_ms_median": 8.335,
+					"frame_ms_p95": 8.601,
+					"frame_ms_p99": 8.848,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 574.0,
+					"physics_ms": 0.734,
+					"primitives": 246808.0,
+					"render_cpu_ms": 1.0110000371933,
+					"render_gpu_ms": 1.18499994277954,
+					"script_ms": 8.414,
+					"video_mem_mb": 222.10383605957
+				},
+				"lobby": {
+					"draw_calls": 1209.0,
+					"enemies": 56.0,
+					"frame_ms_max": 9.319,
+					"frame_ms_median": 8.34,
+					"frame_ms_p95": 8.56,
+					"frame_ms_p99": 8.826,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 1300.0,
+					"physics_ms": 1.018,
+					"primitives": 492246.0,
+					"render_cpu_ms": 1.66499996185303,
+					"render_gpu_ms": 1.53699994087219,
+					"script_ms": 8.317,
+					"video_mem_mb": 222.093032836914
+				},
+				"roof": {
+					"draw_calls": 1050.0,
+					"enemies": 56.0,
+					"frame_ms_max": 11.877,
+					"frame_ms_median": 8.338,
+					"frame_ms_p95": 8.565,
+					"frame_ms_p99": 8.829,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 1129.0,
+					"physics_ms": 0.8,
+					"primitives": 427424.0,
+					"render_cpu_ms": 1.59200000762939,
+					"render_gpu_ms": 1.24000000953674,
+					"script_ms": 8.309,
+					"video_mem_mb": 222.11083984375
+				},
+				"site70": {
+					"draw_calls": 1038.0,
+					"enemies": 56.0,
+					"frame_ms_max": 9.785,
+					"frame_ms_median": 8.336,
+					"frame_ms_p95": 8.558,
+					"frame_ms_p99": 8.796,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 1124.0,
+					"physics_ms": 0.674,
+					"primitives": 500972.0,
+					"render_cpu_ms": 1.37300002574921,
+					"render_gpu_ms": 1.37600004673004,
+					"script_ms": 8.305,
+					"video_mem_mb": 222.109237670898
+				}
+			}
+		},
+		"calm_gl_compatibility": {
+			"per_run_median_ms": {
+				"avenue": [
+					8.35,
+					8.34,
+					8.33
+				],
+				"cellar": [
+					8.37,
+					8.33,
+					8.34
+				],
+				"fire": [
+					8.37,
+					8.33,
+					8.33
+				],
+				"lobby": [
+					8.4,
+					8.34,
+					8.35
+				],
+				"roof": [
+					8.4,
+					8.34,
+					8.33
+				],
+				"site70": [
+					8.37,
+					8.34,
+					8.34
+				]
+			},
+			"runs": 3,
+			"spots": {
+				"avenue": {
+					"draw_calls": 678.0,
+					"enemies": 56.0,
+					"frame_ms_max": 10.071,
+					"frame_ms_median": 8.342,
+					"frame_ms_p95": 8.58,
+					"frame_ms_p99": 8.998,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 678.0,
+					"physics_ms": 1.048,
+					"primitives": 279664.0,
+					"render_cpu_ms": 2.74799990653992,
+					"render_gpu_ms": 0.978999972343445,
+					"script_ms": 9.02,
+					"video_mem_mb": 110.112819671631
+				},
+				"cellar": {
+					"draw_calls": 587.0,
+					"enemies": 56.0,
+					"frame_ms_max": 11.902,
+					"frame_ms_median": 8.337,
+					"frame_ms_p95": 8.551,
+					"frame_ms_p99": 8.644,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 587.0,
+					"physics_ms": 0.781,
+					"primitives": 279971.0,
+					"render_cpu_ms": 2.55999994277954,
+					"render_gpu_ms": 1.00399994850159,
+					"script_ms": 8.171,
+					"video_mem_mb": 110.118389129639
+				},
+				"fire": {
+					"draw_calls": 574.0,
+					"enemies": 56.0,
+					"frame_ms_max": 11.485,
+					"frame_ms_median": 8.333,
+					"frame_ms_p95": 8.595,
+					"frame_ms_p99": 8.687,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 574.0,
+					"physics_ms": 0.718,
+					"primitives": 246808.0,
+					"render_cpu_ms": 2.76699995994568,
+					"render_gpu_ms": 1.21200001239777,
+					"script_ms": 8.144,
+					"video_mem_mb": 110.115367889404
+				},
+				"lobby": {
+					"draw_calls": 1290.0,
+					"enemies": 56.0,
+					"frame_ms_max": 23.5,
+					"frame_ms_median": 8.347,
+					"frame_ms_p95": 10.55,
+					"frame_ms_p99": 11.374,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 1290.0,
+					"physics_ms": 0.712,
+					"primitives": 488394.0,
+					"render_cpu_ms": 4.69099998474121,
+					"render_gpu_ms": 1.03900003433228,
+					"script_ms": 8.072,
+					"video_mem_mb": 110.106739044189
+				},
+				"roof": {
+					"draw_calls": 1129.0,
+					"enemies": 56.0,
+					"frame_ms_max": 15.087,
+					"frame_ms_median": 8.344,
+					"frame_ms_p95": 8.707,
+					"frame_ms_p99": 9.689,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 1129.0,
+					"physics_ms": 1.021,
+					"primitives": 427424.0,
+					"render_cpu_ms": 4.43800020217896,
+					"render_gpu_ms": 0.927999973297119,
+					"script_ms": 9.969,
+					"video_mem_mb": 110.120983123779
+				},
+				"site70": {
+					"draw_calls": 1124.0,
+					"enemies": 56.0,
+					"frame_ms_max": 18.089,
+					"frame_ms_median": 8.341,
+					"frame_ms_p95": 8.643,
+					"frame_ms_p99": 9.094,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 1124.0,
+					"physics_ms": 0.883,
+					"primitives": 500972.0,
+					"render_cpu_ms": 3.94700002670288,
+					"render_gpu_ms": 1.04499995708466,
+					"script_ms": 9.874,
+					"video_mem_mb": 110.119701385498
+				}
+			}
+		},
+		"calm_mobile": {
+			"per_run_median_ms": {
+				"avenue": [
+					8.37,
+					8.34,
+					8.33
+				],
+				"cellar": [
+					8.34,
+					8.34,
+					8.34
+				],
+				"fire": [
+					8.34,
+					8.34,
+					8.34
+				],
+				"lobby": [
+					8.33,
+					8.33,
+					8.32
+				],
+				"roof": [
+					8.34,
+					8.34,
+					8.32
+				],
+				"site70": [
+					8.34,
+					8.34,
+					8.34
+				]
+			},
+			"runs": 3,
+			"spots": {
+				"avenue": {
+					"draw_calls": 335.0,
+					"enemies": 56.0,
+					"frame_ms_max": 17.512,
+					"frame_ms_median": 8.342,
+					"frame_ms_p95": 8.616,
+					"frame_ms_p99": 8.957,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 335.0,
+					"physics_ms": 0.885,
+					"primitives": 279664.0,
+					"render_cpu_ms": 1.08599996566772,
+					"render_gpu_ms": 1.41999995708466,
+					"script_ms": 8.619,
+					"video_mem_mb": 185.496353149414
+				},
+				"cellar": {
+					"draw_calls": 452.0,
+					"enemies": 56.0,
+					"frame_ms_max": 10.066,
+					"frame_ms_median": 8.341,
+					"frame_ms_p95": 8.604,
+					"frame_ms_p99": 8.823,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 452.0,
+					"physics_ms": 0.789,
+					"primitives": 279971.0,
+					"render_cpu_ms": 0.809000015258789,
+					"render_gpu_ms": 1.61300003528595,
+					"script_ms": 8.173,
+					"video_mem_mb": 185.503387451172
+				},
+				"fire": {
+					"draw_calls": 379.0,
+					"enemies": 56.0,
+					"frame_ms_max": 10.194,
+					"frame_ms_median": 8.337,
+					"frame_ms_p95": 8.613,
+					"frame_ms_p99": 8.887,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 379.0,
+					"physics_ms": 0.787,
+					"primitives": 246808.0,
+					"render_cpu_ms": 0.860000014305115,
+					"render_gpu_ms": 1.49399995803833,
+					"script_ms": 8.396,
+					"video_mem_mb": 185.499618530273
+				},
+				"lobby": {
+					"draw_calls": 755.0,
+					"enemies": 56.0,
+					"frame_ms_max": 10.429,
+					"frame_ms_median": 8.329,
+					"frame_ms_p95": 8.549,
+					"frame_ms_p99": 8.703,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 755.0,
+					"physics_ms": 0.858,
+					"primitives": 492246.0,
+					"render_cpu_ms": 1.38699996471405,
+					"render_gpu_ms": 1.2849999666214,
+					"script_ms": 8.312,
+					"video_mem_mb": 185.488815307617
+				},
+				"roof": {
+					"draw_calls": 692.0,
+					"enemies": 56.0,
+					"frame_ms_max": 10.07,
+					"frame_ms_median": 8.336,
+					"frame_ms_p95": 8.577,
+					"frame_ms_p99": 8.809,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 692.0,
+					"physics_ms": 0.977,
+					"primitives": 427424.0,
+					"render_cpu_ms": 1.18599998950958,
+					"render_gpu_ms": 1.16799998283386,
+					"script_ms": 8.539,
+					"video_mem_mb": 185.506622314453
+				},
+				"site70": {
+					"draw_calls": 748.0,
+					"enemies": 56.0,
+					"frame_ms_max": 9.748,
+					"frame_ms_median": 8.339,
+					"frame_ms_p95": 8.542,
+					"frame_ms_p99": 8.668,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 748.0,
+					"physics_ms": 0.881,
+					"primitives": 500972.0,
+					"render_cpu_ms": 1.28699994087219,
+					"render_gpu_ms": 1.65199995040894,
+					"script_ms": 8.305,
+					"video_mem_mb": 185.505020141602
+				}
+			}
+		},
+		"live_forward_plus": {
+			"per_run_median_ms": {
+				"avenue": [
+					2.02,
+					1.98,
+					1.84
+				],
+				"cellar": [
+					7.85,
+					7.8,
+					8.32
+				],
+				"fire": [
+					8.4,
+					8.87,
+					9.12
+				],
+				"lobby": [
+					4.78,
+					4.23,
+					4.18
+				],
+				"roof": [
+					6.53,
+					6.76,
+					6.58
+				],
+				"site70": [
+					10.56,
+					9.65,
+					9.26
+				]
+			},
+			"runs": 3,
+			"spots": {
+				"avenue": {
+					"draw_calls": 633.0,
+					"enemies": 56.0,
+					"frame_ms_max": 7.325,
+					"frame_ms_median": 1.979,
+					"frame_ms_p95": 4.307,
+					"frame_ms_p99": 5.995,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 635.0,
+					"physics_ms": 8.022,
+					"primitives": 259504.0,
+					"render_cpu_ms": 0.546999990940094,
+					"render_gpu_ms": 0.592999994754791,
+					"script_ms": 7.776,
+					"video_mem_mb": 221.893753051758
+				},
+				"cellar": {
+					"draw_calls": 541.0,
+					"enemies": 56.0,
+					"frame_ms_max": 19.924,
+					"frame_ms_median": 7.848,
+					"frame_ms_p95": 12.648,
+					"frame_ms_p99": 16.165,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 579.0,
+					"physics_ms": 11.542,
+					"primitives": 272341.0,
+					"render_cpu_ms": 0.75900000333786,
+					"render_gpu_ms": 1.47000002861023,
+					"script_ms": 4.19,
+					"video_mem_mb": 221.683059692383
+				},
+				"fire": {
+					"draw_calls": 644.0,
+					"enemies": 56.0,
+					"frame_ms_max": 24.168,
+					"frame_ms_median": 8.869,
+					"frame_ms_p95": 14.857,
+					"frame_ms_p99": 17.161,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 10.0,
+					"objects": 676.0,
+					"physics_ms": 8.475,
+					"primitives": 297908.0,
+					"render_cpu_ms": 0.823000013828278,
+					"render_gpu_ms": 2.00399994850159,
+					"script_ms": 4.51,
+					"video_mem_mb": 221.891983032227
+				},
+				"lobby": {
+					"draw_calls": 1083.0,
+					"enemies": 56.0,
+					"frame_ms_max": 14.972,
+					"frame_ms_median": 4.232,
+					"frame_ms_p95": 7.056,
+					"frame_ms_p99": 8.426,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 9.0,
+					"objects": 1171.0,
+					"physics_ms": 6.577,
+					"primitives": 465754.0,
+					"render_cpu_ms": 1.08500003814697,
+					"render_gpu_ms": 0.83899998664856,
+					"script_ms": 4.361,
+					"video_mem_mb": 221.880340576172
+				},
+				"roof": {
+					"draw_calls": 810.0,
+					"enemies": 56.0,
+					"frame_ms_max": 15.645,
+					"frame_ms_median": 6.579,
+					"frame_ms_p95": 9.141,
+					"frame_ms_p99": 10.967,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 10.0,
+					"objects": 885.0,
+					"physics_ms": 8.747,
+					"primitives": 381770.0,
+					"render_cpu_ms": 1.02600002288818,
+					"render_gpu_ms": 1.11899995803833,
+					"script_ms": 4.624,
+					"video_mem_mb": 221.898147583008
+				},
+				"site70": {
+					"draw_calls": 920.0,
+					"enemies": 56.0,
+					"frame_ms_max": 32.601,
+					"frame_ms_median": 9.65,
+					"frame_ms_p95": 15.722,
+					"frame_ms_p99": 17.817,
+					"hitch_worst_ms": 32.611,
+					"hitches": 13.0,
+					"hunting": 1.0,
+					"objects": 999.0,
+					"physics_ms": 8.672,
+					"primitives": 455450.0,
+					"render_cpu_ms": 1.24000000953674,
+					"render_gpu_ms": 2.24900007247925,
+					"script_ms": 5.616,
+					"video_mem_mb": 221.897384643555
+				}
+			}
+		},
+		"live_gl_compatibility": {
+			"per_run_median_ms": {
+				"avenue": [
+					8.33,
+					8.35,
+					5.22
+				],
+				"cellar": [
+					16.89,
+					28.79,
+					8.74
+				],
+				"fire": [
+					33.98,
+					33.72,
+					13.72
+				],
+				"lobby": [
+					8.36,
+					8.38,
+					6.06
+				],
+				"roof": [
+					10.57,
+					15.12,
+					9.06
+				],
+				"site70": [
+					31.64,
+					32.55,
+					16.25
+				]
+			},
+			"runs": 3,
+			"spots": {
+				"avenue": {
+					"draw_calls": 580.0,
+					"enemies": 56.0,
+					"frame_ms_max": 86.251,
+					"frame_ms_median": 8.333,
+					"frame_ms_p95": 12.813,
+					"frame_ms_p99": 20.461,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 580.0,
+					"physics_ms": 15.683,
+					"primitives": 251272.0,
+					"render_cpu_ms": 1.91199994087219,
+					"render_gpu_ms": 1.16700005531311,
+					"script_ms": 7.63,
+					"video_mem_mb": 112.145748138428
+				},
+				"cellar": {
+					"draw_calls": 543.0,
+					"enemies": 56.0,
+					"frame_ms_max": 101.25,
+					"frame_ms_median": 16.886,
+					"frame_ms_p95": 29.519,
+					"frame_ms_p99": 40.973,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 543.0,
+					"physics_ms": 9.633,
+					"primitives": 254395.0,
+					"render_cpu_ms": 2.05800008773804,
+					"render_gpu_ms": 3.54699993133545,
+					"script_ms": 6.895,
+					"video_mem_mb": 108.838054656982
+				},
+				"fire": {
+					"draw_calls": 642.0,
+					"enemies": 56.0,
+					"frame_ms_max": 80.906,
+					"frame_ms_median": 33.724,
+					"frame_ms_p95": 42.631,
+					"frame_ms_p99": 45.106,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 11.0,
+					"objects": 642.0,
+					"physics_ms": 12.686,
+					"primitives": 275760.0,
+					"render_cpu_ms": 2.36700010299683,
+					"render_gpu_ms": 5.76800012588501,
+					"script_ms": 8.757,
+					"video_mem_mb": 111.495098114014
+				},
+				"lobby": {
+					"draw_calls": 1126.0,
+					"enemies": 56.0,
+					"frame_ms_max": 19.124,
+					"frame_ms_median": 8.359,
+					"frame_ms_p95": 11.346,
+					"frame_ms_p99": 15.161,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 1126.0,
+					"physics_ms": 9.801,
+					"primitives": 449046.0,
+					"render_cpu_ms": 3.06800007820129,
+					"render_gpu_ms": 1.26400005817413,
+					"script_ms": 7.736,
+					"video_mem_mb": 112.139667510986
+				},
+				"roof": {
+					"draw_calls": 897.0,
+					"enemies": 56.0,
+					"frame_ms_max": 75.152,
+					"frame_ms_median": 10.567,
+					"frame_ms_p95": 16.435,
+					"frame_ms_p99": 18.065,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 897.0,
+					"physics_ms": 7.74,
+					"primitives": 382136.0,
+					"render_cpu_ms": 3.02300000190735,
+					"render_gpu_ms": 2.5699999332428,
+					"script_ms": 7.718,
+					"video_mem_mb": 108.841358184814
+				},
+				"site70": {
+					"draw_calls": 1000.0,
+					"enemies": 56.0,
+					"frame_ms_max": 107.113,
+					"frame_ms_median": 31.636,
+					"frame_ms_p95": 41.286,
+					"frame_ms_p99": 45.862,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 10.0,
+					"objects": 1000.0,
+					"physics_ms": 15.922,
+					"primitives": 469556.0,
+					"render_cpu_ms": 3.18400001525879,
+					"render_gpu_ms": 7.57999992370605,
+					"script_ms": 11.021,
+					"video_mem_mb": 111.792263031006
+				}
+			}
+		},
+		"live_mobile": {
+			"per_run_median_ms": {
+				"avenue": [
+					2.0,
+					1.77,
+					1.8
+				],
+				"cellar": [
+					7.84,
+					7.73,
+					8.01
+				],
+				"fire": [
+					11.15,
+					8.72,
+					8.77
+				],
+				"lobby": [
+					3.49,
+					2.95,
+					2.89
+				],
+				"roof": [
+					6.38,
+					6.02,
+					6.26
+				],
+				"site70": [
+					9.15,
+					9.17,
+					8.93
+				]
+			},
+			"runs": 3,
+			"spots": {
+				"avenue": {
+					"draw_calls": 321.0,
+					"enemies": 56.0,
+					"frame_ms_max": 9.96,
+					"frame_ms_median": 1.804,
+					"frame_ms_p95": 4.336,
+					"frame_ms_p99": 6.864,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 321.0,
+					"physics_ms": 7.747,
+					"primitives": 261222.0,
+					"render_cpu_ms": 0.462999999523163,
+					"render_gpu_ms": 0.419999986886978,
+					"script_ms": 4.865,
+					"video_mem_mb": 185.498031616211
+				},
+				"cellar": {
+					"draw_calls": 429.0,
+					"enemies": 56.0,
+					"frame_ms_max": 18.363,
+					"frame_ms_median": 7.835,
+					"frame_ms_p95": 9.774,
+					"frame_ms_p99": 13.749,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 0.0,
+					"objects": 429.0,
+					"physics_ms": 10.421,
+					"primitives": 255381.0,
+					"render_cpu_ms": 0.623000025749207,
+					"render_gpu_ms": 1.09899997711182,
+					"script_ms": 3.917,
+					"video_mem_mb": 185.29069519043
+				},
+				"fire": {
+					"draw_calls": 418.0,
+					"enemies": 56.0,
+					"frame_ms_max": 34.922,
+					"frame_ms_median": 8.774,
+					"frame_ms_p95": 14.826,
+					"frame_ms_p99": 16.526,
+					"hitch_worst_ms": 34.9,
+					"hitches": 13.0,
+					"hunting": 10.0,
+					"objects": 418.0,
+					"physics_ms": 8.58,
+					"primitives": 286276.0,
+					"render_cpu_ms": 0.726999998092651,
+					"render_gpu_ms": 1.81900000572205,
+					"script_ms": 4.033,
+					"video_mem_mb": 185.500457763672
+				},
+				"lobby": {
+					"draw_calls": 712.0,
+					"enemies": 56.0,
+					"frame_ms_max": 12.297,
+					"frame_ms_median": 2.951,
+					"frame_ms_p95": 6.693,
+					"frame_ms_p99": 8.983,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 8.0,
+					"objects": 712.0,
+					"physics_ms": 10.141,
+					"primitives": 467732.0,
+					"render_cpu_ms": 0.842000007629395,
+					"render_gpu_ms": 0.943000018596649,
+					"script_ms": 4.86,
+					"video_mem_mb": 185.490493774414
+				},
+				"roof": {
+					"draw_calls": 629.0,
+					"enemies": 56.0,
+					"frame_ms_max": 12.788,
+					"frame_ms_median": 6.255,
+					"frame_ms_p95": 7.928,
+					"frame_ms_p99": 9.031,
+					"hitch_worst_ms": 0.0,
+					"hitches": 0.0,
+					"hunting": 10.0,
+					"objects": 629.0,
+					"physics_ms": 8.109,
+					"primitives": 392066.0,
+					"render_cpu_ms": 0.827000021934509,
+					"render_gpu_ms": 1.0440000295639,
+					"script_ms": 4.464,
+					"video_mem_mb": 185.506622314453
+				},
+				"site70": {
+					"draw_calls": 719.0,
+					"enemies": 56.0,
+					"frame_ms_max": 28.797,
+					"frame_ms_median": 9.151,
+					"frame_ms_p95": 15.593,
+					"frame_ms_p99": 17.525,
+					"hitch_worst_ms": 28.576,
+					"hitches": 1.0,
+					"hunting": 8.0,
+					"objects": 719.0,
+					"physics_ms": 9.222,
+					"primitives": 464194.0,
+					"render_cpu_ms": 1.00800001621246,
+					"render_gpu_ms": 1.84800004959106,
+					"script_ms": 4.62,
+					"video_mem_mb": 185.505020141602
+				}
+			}
+		}
+	}
+}
