@@ -485,6 +485,22 @@ func _sync_story_world() -> void:
 		world.far_landers_node.visible = mission.index >= li
 	park_fight.reset()
 	chase.sync()
+	if String(mission.active().get("id", "")) == "balcony_marksman":
+		alert_marksman()
+
+
+## The marksman on the balcony knows exactly where the player is (the lookout is over): he turns on him at once and keeps him in his
+## sights, so the player has to deal with him instead of creeping up the stair past the guards. Called when the objective starts.
+func alert_marksman() -> void:
+	for e in Game.enemies:
+		var en := e as Enemy
+		if not is_instance_valid(en) or en.state == Enemy.State.DEAD or String(story_roles.get(en.uid, "")) != "balcony_marksman":
+			continue
+		en.knows_player = true
+		en.post = false
+		en.lazy_alert = 0.0
+		en._aggravate(true)
+		en.alert_t = 0.3
 
 
 ## Every STORY_TICK: the objectives that watch the world (the lookout, the rifle, the guards).
@@ -503,10 +519,6 @@ func _update_lander_objectives() -> void:
 					_lookout_t = maxf(0.0, _lookout_t - STORY_TICK * 0.5)
 				if _lookout_t >= LOOKOUT_TIME and world.lander.landed:
 					Mission.complete("lookout")
-		"take_rifle":
-			for inst in player.weapons.loadout["rifle"]:
-				if String(inst["id"]) == "sniper":
-					Mission.complete("take_rifle")
 		"park_fight":
 			if park_fight.killed() >= ParkFight.KILLS_TO_CONTINUE:
 				Mission.complete("park_fight")

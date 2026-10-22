@@ -39,6 +39,35 @@ const DEFS := {
 
 static var _bad_names := ["Backpack", "Sword", "Pistol", "Horse_Head"]
 
+## Bone roles of the two Mixamo-style rigs (the name's second "_" word: "Bind_Hips_03_00", "mixamorig_Hips_34").
+const ROLES := ["Hips", "Spine", "Spine1", "Spine2", "Neck", "Head", "HeadTop", "LeftArm", "LeftForeArm", "LeftHand", "RightArm", "RightForeArm",
+	"RightHand", "LeftUpLeg", "LeftLeg", "LeftFoot", "RightUpLeg", "RightLeg", "RightFoot"]
+
+## The hit boxes that follow the skeleton (clip models). Each runs from the bone `from` to the bone `to` (the `to` bone of the
+## head is the top of the skull; the agile rig has none, so the head box sits a head's height above the bone), stretched by
+## `ext_a` / `ext_b` metres at the ends. Widths and depths are metres for a 1.75 m body (multiplied by the enemy's scale).
+## `part` is what the weapons see (damage: head x head_mult, legs x0.75, body and arms x1).
+const HIT_PARTS := [
+	# id, part, shape, from, to, ext_a, ext_b, width, depth
+	["head", "head", "sphere", "Head", "HeadTop", 0.0, 0.0, 0.17, 0.17],
+	["chest", "body", "box", "Spine", "Neck", 0.0, 0.06, 0.40, 0.26],
+	["pelvis", "body", "box", "Hips", "Spine", 0.14, 0.0, 0.34, 0.24],
+	["arm_l", "arms", "capsule", "LeftArm", "LeftForeArm", 0.05, 0.03, 0.12, 0.0],
+	["arm_r", "arms", "capsule", "RightArm", "RightForeArm", 0.05, 0.03, 0.12, 0.0],
+	["fore_l", "arms", "capsule", "LeftForeArm", "LeftHand", 0.02, 0.10, 0.10, 0.0],
+	["fore_r", "arms", "capsule", "RightForeArm", "RightHand", 0.02, 0.10, 0.10, 0.0],
+	["thigh_l", "legs", "capsule", "LeftUpLeg", "LeftLeg", 0.0, 0.0, 0.17, 0.0],
+	["thigh_r", "legs", "capsule", "RightUpLeg", "RightLeg", 0.0, 0.0, 0.17, 0.0],
+	["shin_l", "legs", "capsule", "LeftLeg", "LeftFoot", 0.0, 0.10, 0.14, 0.0],
+	["shin_r", "legs", "capsule", "RightLeg", "RightFoot", 0.0, 0.10, 0.14, 0.0],
+]
+
+## Clips that cycle with a stride: switching between them keeps the phase (no foot slide, no restart pop).
+const GAITS := ["walk", "run", "crouch_walk", "run_shoot", "strafe_l", "strafe_r", "back", "look"]
+## Clips that must start at once and are never held back by the anti-flicker hold.
+const URGENT := ["death", "melee", "reload", "hit", "hit2"]
+const HOLD_TICKS := 24            # a clip stays at least this many physics ticks (0.2 s at 120) before a non-urgent change
+
 var model_id := ""
 var def: Dictionary
 var body: Node3D
@@ -51,8 +80,13 @@ var current := ""
 var anim_speed := 1.0
 var clip_of := {}            # logical name -> full clip name in the player
 var frozen := false
+var _lod_manual := false     # the player is stepped by hand (see lod_tick)
+var _lod_acc := 0.0
 var pose_t := 0.0            # soldier: procedural phase
 var pose_state := {}
+var layer: PoseLayer         # agile / marksman: flinch, recoil and takedown pose on top of the clips
+var roles := {}              # role -> bone index (see ROLES)
+var _started_tick := 0       # physics tick the current clip was started
 
 
 ## outfit: people only ("Adventurer", "Farmer", ...). height: metres.
@@ -93,6 +127,18 @@ func build(id: String, height: float = 1.75, outfit: String = "") -> void:
 	head_node = BoneAttachment3D.new()
 	head_node.bone_name = String(def["head"])
 	skeleton.add_child(head_node)
+	if player != null and (id == "agile" or id == "marksman"):
+		_find_roles()
+		layer = PoseLayer.new()
+		layer.roles = roles
+		skeleton.add_child(layer)
+
+
+func _find_roles() -> void:
+	for i in skeleton.get_bone_count():
+		var parts := skeleton.get_bone_name(i).split("_")
+		if parts.size() > 1 and ROLES.has(parts[1]) and not roles.has(parts[1]):
+			roles[parts[1]] = i
 
 
 func _pick_outfit(outfit: String) -> void:
@@ -163,13 +209,43 @@ func clip_length(logical: String) -> float:
 	return player.get_animation(clip_of[logical]).length if has_anim(logical) else 0.0
 
 
-## Plays a logical clip (no-op when already playing it). `speed` scales the playback.
-func play(logical: String, speed: float = 1.0, blend: float = 0.2) -> void:
+## How long the cross-fade from clip `from` into clip `to` lasts: fast into a shot or a blow, slower between gaits and
+## into / out of standing still.
+func blend_time(from: String, to: String) -> float:
+	if to == "melee" or to == "death":
+		return 0.06
+	if to == "shoot" or from == "shoot":
+		return 0.1
+	if GAITS.has(from) and GAITS.has(to):
+		return 0.28
+	if to == "aim" or from == "aim":
+		return 0.16
+	if to == "reload" or from == "reload":
+		return 0.18
+	return 0.3
+
+
+## Plays a logical clip (no-op when already playing it). `speed` scales the playback. `blend` < 0: `blend_time`.
+## A change is held back until the current clip has played HOLD_TICKS (so aim / shoot / run do not flicker when the state
+## wobbles); a stride clip handed over to another stride clip carries its phase along.
+func play(logical: String, speed: float = 1.0, blend: float = -1.0) -> void:
 	if player == null or not has_anim(logical):
 		return
 	if current != logical:
+		var tick := Engine.get_physics_frames()
+		if current != "" and not URGENT.has(logical) and not URGENT.has(current) and tick - _started_tick < HOLD_TICKS:
+			return
+		var phase := -1.0
+		if GAITS.has(current) and GAITS.has(logical) and player.current_animation != "":
+			var old_len := player.current_animation_length
+			if old_len > 0.0:
+				phase = fmod(player.current_animation_position / old_len, 1.0)
+		var b := blend_time(current, logical) if blend < 0.0 else blend
 		current = logical
-		player.play(clip_of[logical], blend)
+		_started_tick = tick
+		player.play(clip_of[logical], b)
+		if phase >= 0.0:
+			player.seek(phase * clip_length(logical), false)
 	player.speed_scale = speed
 	anim_speed = speed
 
@@ -178,8 +254,33 @@ func play_once(logical: String, speed: float = 1.0, blend: float = 0.05) -> void
 	if player == null or not has_anim(logical):
 		return
 	current = logical
+	_started_tick = Engine.get_physics_frames()
 	player.play(clip_of[logical], blend)
 	player.speed_scale = speed
+
+
+## Animation update-rate LOD. `interval` <= 0: the AnimationPlayer runs on its own every frame. Above 0 it is stepped by hand
+## once per `interval` seconds, handed all the time that went by in one advance (a distant soldier's blend tree + skeleton pose
+## then costs a fraction; the clips cross-fade and loop as before, they just move in bigger steps).
+func lod_tick(delta: float, interval: float) -> void:
+	if player == null:
+		return
+	if interval <= 0.0:
+		if _lod_manual:
+			_lod_manual = false
+			_lod_acc = 0.0
+			player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE
+		return
+	if not _lod_manual:
+		_lod_manual = true
+		_lod_acc = interval
+		player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	_lod_acc += delta
+	if _lod_acc >= interval:
+		var dt := _lod_acc
+		_lod_acc = 0.0
+		if player.active:
+			player.advance(dt)
 
 
 func seek_end(logical: String) -> void:
@@ -195,6 +296,95 @@ func stop() -> void:
 	if player != null:
 		player.pause()
 	frozen = true
+
+
+# ---------------------------------------------------------------- landmarks for add-on parts (InvaderArmour)
+
+const ANCHOR_ROLES := {"hips": "Hips", "chest": "Spine2", "neck": "Neck", "head": "Head", "headtop": "HeadTop", "arm_l": "LeftArm", "arm_r": "RightArm", "fore_l": "LeftForeArm",
+	"fore_r": "RightForeArm", "hand_l": "LeftHand", "hand_r": "RightHand"}
+const ANCHOR_SOLDIER := {"hips": "hips", "chest": "chest", "neck": "neck", "head": "head", "arm_l": "arm.L", "arm_r": "arm.R", "fore_l": "forearm.L",
+	"fore_r": "forearm.R", "hand_l": "hand.L", "hand_r": "hand.R"}
+var armour: Array = []      # MeshInstance3Ds of the invader armour kit (InvaderArmour), shown / hidden by distance
+var _armour_shown := true
+
+
+## Bone of a landmark ("chest", "head", "arm_l", "fore_r", ...) on any of the rigs; -1 when it has none.
+func anchor_bone(a: String) -> int:
+	if not (ANCHOR_ROLES.has(a) and (model_id != "soldier" or ANCHOR_SOLDIER.has(a))):
+		return -1
+	if model_id == "soldier":
+		return bone(ANCHOR_SOLDIER[a])
+	return roles.get(ANCHOR_ROLES[a], -1)
+
+
+## Metres per skeleton unit at the fitted size (the model at scale 1: independent of the enemy's body scale).
+func rest_k() -> float:
+	return (global_transform.affine_inverse() * skeleton.global_transform).basis.get_scale().x
+
+
+## Where a landmark sits in the rest pose, in metres in the model's frame (+x left, +y up, +z forward).
+func anchor_pos(a: String) -> Vector3:
+	return skeleton.get_bone_global_rest(anchor_bone(a)).origin * rest_k()
+
+
+func show_armour(v: bool) -> void:
+	if v == _armour_shown:
+		return
+	_armour_shown = v
+	for ba in armour:
+		(ba as Node3D).visible = v
+
+
+# ---------------------------------------------------------------- hit boxes on the bones
+
+## One entry per HIT_PARTS row whose bones exist: {id, part, shape, bone, local}. `bs` is the body scale of the enemy;
+## shapes are in world metres. Needs the model inside the scene tree (the fitted scale is read from the skeleton).
+## `local` is the box's transform in the `bone`'s rest frame: `bone_world()` carries it along with the animation.
+func hit_specs(bs: float) -> Array:
+	var out := []
+	var k := skeleton.global_transform.basis.get_scale().x       # metres per skeleton unit
+	var u := 1.0 / k
+	for sp in HIT_PARTS:
+		var ai: int = roles.get(sp[3], -1)
+		if ai < 0:
+			continue
+		var ga := skeleton.get_bone_global_rest(ai)
+		var a := ga.origin
+		var bi: int = roles.get(sp[4], -1)
+		var b := skeleton.get_bone_global_rest(bi).origin if bi >= 0 else a + Vector3.UP * 0.26 * bs * u
+		var dir := (b - a).normalized()
+		var a2 := a - dir * float(sp[5]) * bs * u
+		var b2 := b + dir * float(sp[6]) * bs * u
+		var len_m := a2.distance_to(b2) * k
+		var zr := Vector3.BACK - dir * Vector3.BACK.dot(dir)
+		zr = zr.normalized() if zr.length() > 0.2 else Vector3.RIGHT
+		var xa := dir.cross(zr).normalized()
+		var rest := Transform3D(Basis(xa, dir, xa.cross(dir)), (a2 + b2) * 0.5)
+		var w := float(sp[7]) * bs
+		var shape: Shape3D
+		match String(sp[2]):
+			"sphere":
+				var s := SphereShape3D.new()
+				s.radius = w
+				shape = s
+			"box":
+				var bx := BoxShape3D.new()
+				bx.size = Vector3(w, len_m, float(sp[8]) * bs)
+				shape = bx
+			_:
+				var cp := CapsuleShape3D.new()
+				cp.radius = w * 0.5
+				cp.height = maxf(len_m, cp.radius * 2.0 + 0.02)
+				shape = cp
+		out.append({"id": sp[0], "part": sp[1], "shape": shape, "bone": ai, "local": ga.affine_inverse() * rest})
+	return out
+
+
+## A hit box's place in the world now (unscaled, so it can be given to a node of scale 1).
+func bone_world(bone: int, local: Transform3D) -> Transform3D:
+	var t := skeleton.global_transform * skeleton.get_bone_global_pose(bone) * local
+	t.basis = t.basis.orthonormalized()
+	return t
 
 
 ## Attach a node (a gun) to the right hand; returns the attachment holder.

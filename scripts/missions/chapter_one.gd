@@ -18,6 +18,20 @@ static func _main() -> Node:
 	return Game.player.get_tree().current_scene
 
 
+## The marksman is dead: his LR-9 goes straight into the player's rifle slot (nobody has to walk down to the guards and up the balcony stair
+## for it), and the one he dropped is removed.
+static func _grant_rifle(_m: Mission) -> void:
+	var w: Weapons = Game.player.weapons
+	for inst in w.loadout["rifle"]:
+		if String(inst["id"]) == "sniper":
+			return
+	for pk in Game.pickups.duplicate():
+		if is_instance_valid(pk) and pk.weapon_id == "sniper" and not pk.is_ammo:
+			pk.take()
+	w.switching = 0.0
+	w.pick_up(Pickup.spawn_weapon(_main(), Game.player.global_position, "sniper", 5))
+
+
 static func build() -> Mission:
 	var m := Mission.new()
 	m.id = "chapter_one"
@@ -42,11 +56,13 @@ static func build() -> Mission:
 			"on_start": func(mm: Mission) -> void:
 				_main().begin_lookout()
 				Game.radio_line.emit("THE SHIPS ARE SETTLING IN THE SQUARES. THE NEAREST ONE IS IN THE PARK.")}),
-		Mission.obj("balcony_marksman", "TAKE OUT THE MARKSMAN ON THE BALCONY", {"type": "kill_group", "group": 201, "pos": CityStory.MARKSMAN_AT,
-			"on_start": _say("A MARKSMAN ON THE BALCONY OVER THE PARK. GO UP THE STAIR BEHIND HIM.")}),
-		Mission.obj("take_rifle", "TAKE HIS RIFLE", {"type": "script", "pos": CityStory.MARKSMAN_AT}),
+		Mission.obj("balcony_marksman", "KILL THE MARKSMAN - HE HAS SEEN YOU", {"type": "kill_group", "group": 201, "pos": CityStory.MARKSMAN_AT,
+			"on_start": func(_mm: Mission) -> void:
+				_main().alert_marksman()
+				Game.radio_line.emit("A MARKSMAN ON THE BALCONY. HE KNOWS WHERE YOU ARE. TAKE HIM OUT, NOW."),
+			"on_complete": _grant_rifle}),
 		Mission.obj("park_fight", "THIN OUT THE GUARDS AT THE RAMP", {"type": "script", "pos": foot, "marker_pos": foot,
-			"on_start": _say("LIE DOWN. LOOK THROUGH THE SCOPE. TEN GUARDS AT THE FOOT OF THE RAMP.")}),
+			"on_start": _say("HIS LR-9 IS YOURS. LIE DOWN. LOOK THROUGH THE SCOPE. TEN GUARDS AT THE FOOT OF THE RAMP.")}),
 	])
 	var lane := CityStory.escape_lane()
 	if lane.is_empty():

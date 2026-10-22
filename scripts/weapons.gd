@@ -40,6 +40,7 @@ var g_down_t := -1.0               # seconds G has been held (-1 = not held)
 var throw_t := 0.0
 var grenade_k := 0.0               # 0 .. 1: the weapon is lowered and the arm is up
 var throw_arm: Node3D
+var grab_arm: Node3D
 var wound_arm_node: Node3D
 var _arc_dots: MultiMeshInstance3D
 var _arc_ring: MeshInstance3D
@@ -109,6 +110,26 @@ func setup(p: Player, cam: Camera3D) -> void:
 	throw_arm.add_child(hand)
 	throw_arm.visible = false
 	camera.add_child(throw_arm)
+	# the grabbing arm of a takedown (left sleeve and glove): clamps over the victim's mouth while the blade goes in
+	grab_arm = Node3D.new()
+	var gsleeve := MeshInstance3D.new()
+	var gsb := BoxMesh.new()
+	gsb.size = Vector3(0.09, 0.09, 0.4)
+	gsb.material = smat
+	gsleeve.mesh = gsb
+	gsleeve.position = Vector3(0, 0, 0.18)
+	grab_arm.add_child(gsleeve)
+	var glove := MeshInstance3D.new()
+	var glb := BoxMesh.new()
+	glb.size = Vector3(0.1, 0.07, 0.12)
+	var gmat := StandardMaterial3D.new()
+	gmat.albedo_color = Color(0.1, 0.1, 0.1)
+	glb.material = gmat
+	glove.mesh = glb
+	glove.position = Vector3(0, 0, -0.07)
+	grab_arm.add_child(glove)
+	grab_arm.visible = false
+	camera.add_child(grab_arm)
 	# the wounded right arm: a limp sleeve hanging at the bottom right edge of the view, dark with blood
 	wound_arm_node = Node3D.new()
 	var sl := MeshInstance3D.new()
@@ -778,7 +799,7 @@ func _hide_preview() -> void:
 # ---------------------------------------------------------------- melee
 
 const MELEE_SWING_TIME := 0.3
-const TAKEDOWN_TIME := 0.28
+const TAKEDOWN_TIME := 0.6          # grab, stab, lower him: lasts as long as the victim's struggle (Enemy.TAKEDOWN_STRUGGLE)
 
 
 func _melee_swing() -> void:
@@ -825,7 +846,7 @@ func _do_takedown(en: Enemy) -> void:
 	_melee_hit_pending = false
 	ads_k = 0.0
 	Game.takedowns += 1
-	en.takedown()
+	en.takedown(player.global_position)
 	takedown_target = null
 	hit_marker.emit(false, true)
 	Sfx.play(self, "stab", -2.0)
@@ -1303,11 +1324,22 @@ func _process(delta: float) -> void:
 		pos += Vector3(0.08, -0.22, 0.06) * grenade_k
 		rot += Vector3(-0.45, 0.0, 0.25) * grenade_k
 	if takedown_t > 0.0:
-		# stab: the blade drives straight ahead and down, then comes back
+		# takedown, the attacker's half (the victim's half is Enemy.takedown): the left arm clamps over his mouth while the
+		# blade is drawn back, drives in, then both lower him and the knife comes free
 		var tk := 1.0 - takedown_t / TAKEDOWN_TIME
-		var thrust := sin(PI * minf(tk * 1.15, 1.0))
-		pos += Vector3(-0.1 * thrust, -0.04 * thrust, -0.42 * thrust)
-		rot += Vector3(-0.75 * thrust, 0.2 * thrust, 0.0)
+		var wind := smoothstep(0.0, 0.25, tk) * (1.0 - smoothstep(0.25, 0.4, tk))
+		var thrust := sin(PI * clampf((tk - 0.25) / 0.3, 0.0, 1.0))
+		var lower := smoothstep(0.5, 0.7, tk) * (1.0 - smoothstep(0.8, 1.0, tk))
+		pos += Vector3(0.06 * wind - 0.1 * thrust, 0.03 * wind - 0.04 * thrust - 0.07 * lower, 0.1 * wind - 0.42 * thrust + 0.05 * lower)
+		rot += Vector3(0.35 * wind - 0.75 * thrust - 0.2 * lower, 0.2 * thrust, 0.0)
+	if grab_arm != null:
+		var gk := 0.0
+		if takedown_t > 0.0:
+			var tg := 1.0 - takedown_t / TAKEDOWN_TIME
+			gk = smoothstep(0.0, 0.2, tg) * (1.0 - smoothstep(0.75, 1.0, tg))
+			grab_arm.position = Vector3(-0.2 + 0.2 * gk, -0.34 + 0.14 * gk - 0.08 * smoothstep(0.5, 0.8, tg), -0.2 - 0.32 * gk)
+			grab_arm.rotation = Vector3(0.9 - 1.1 * gk, 0.0, 0.0)
+		grab_arm.visible = gk > 0.02 and not is_scoped()
 	if switching > 0.0:
 		var k2 := 1.0 - absf(switching / 0.32 * 2.0 - 1.0)   # 0 -> 1 -> 0
 		pos += Vector3(0.0, -0.45 * k2, 0.1 * k2)

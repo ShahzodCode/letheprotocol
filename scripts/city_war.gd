@@ -766,6 +766,9 @@ static func _lamps(rng: RandomNumberGenerator) -> void:
 					for tr in City.trees:
 						if (tr["pos"] as Vector2).distance_to(p) < 2.4:
 							ok = false
+					for ec in extra_clear:                  # the lookout's fire escape stands there: no lamp
+						if (ec as Rect2).grow(0.6).has_point(p):
+							ok = false
 					if ok and not _reserved(p, 3.0) and not occ.hits(Rect2(p - Vector2(0.4, 0.4), Vector2(0.8, 0.8)), 0.0):
 						var toward := Vector3(-side, 0.0, 0.0) if along_z else Vector3(0.0, 0.0, -side)
 						var base := Vector3(p.x, 0.0, p.y)

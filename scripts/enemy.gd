@@ -58,8 +58,15 @@ const TOUCH_RANGE := 1.0          # ...unless he bumps into the soldier
 const LOSE_TIME := 4.0            # unseen for this long and the hunt is off: back to wandering
 const SEEN_MULT := 1.6            # once alerted, a soldier keeps seeing you (any direction) up to sight_range * this
 const REPATH_TIME := 0.7
+const ROOF_REACH := 6.0           # the player this far above a hunter and off every nav layer is on a roof nobody follows him to (see _approach_goal)
 const LOD_DIST := 150.0           # wanderers farther than this from the player update only every LOD_STEP seconds
 const LOD_STEP := 0.2
+const ANIM_NEAR := 12.0          # animation update-rate LOD (see _anim_interval): full rate inside this distance...
+const ANIM_STEP2 := 35.0         # ...30 Hz from here (and 8 Hz for one the player is not looking at, from ANIM_NEAR)...
+const ANIM_MID := 70.0           # ...15 Hz...
+const ANIM_FAR := 120.0          # ...8 Hz
+static var NO_ARMOUR := OS.get_environment("LETHE_NOARMOUR") != ""           # A/B switch: the invader armour kit (InvaderArmour) off
+static var ANIM_LOD_OFF := OS.get_environment("LETHE_NOANIMLOD") != ""      # A/B switch for the perf tools
 const ALERT_TIME := 0.6
 const GROUP_ALERT_COUNT := 3      # soldiers of one group that must notice the player on their own before the others are told
 const KNOCK_DECAY := 6.0
@@ -73,7 +80,8 @@ const LEAN_GAP := 0.65              # he stops this far from the wall (body cent
 const BODY_CAP := 60                # dead bodies stay in the world; the oldest go first
 const EXHAUSTED_REACT := 2.0        # a gasping soldier sitting against a wall needs this long to react once he notices the player (he can be knifed meanwhile, even from the front)
 const EXHAUSTED_STAMINA := 6.0      # his stamina while he sits: he pants loudly, and when he gets up he cannot run for long
-const SIT_HIT_SCALE := 0.62         # hit boxes squashed while he sits
+const SIT_HIT_SCALE := 0.62         # hit boxes squashed while he sits (static boxes only: clip models' boxes follow the bones)
+const TAKEDOWN_STRUGGLE := 0.55     # seconds the victim of a takedown thrashes before the death clip takes him down
 const SUSPECT_LOOK_TIME := 8.0      # at the body: looks around this long...
 const SUSPECT_SEARCH_TIME := 15.0   # ...then searches nearby points this long, then goes back to wandering
 const SUSPECT_FOV_MULT := 1.25      # a suspicious soldier's vision cone is 25% wider
@@ -200,7 +208,10 @@ var hold_t := 0.0
 var sight_scale := 1.0            # "The Lander" chase: multiplies his sight (shorter in a 3 m alley, see ChaseFight)
 var seen_delay := 0.0             # seconds the player must stay in view before a hunting soldier counts him as seen
 var _seen_acc := 0.0
-var pace := 1.0                   # multiplies the chase speed (bunching at corners)
+var knows_player := false         # story: he knows exactly where the player is (the balcony marksman once the lookout is over), line of sight or not
+var _roof_goal := Vector3.INF     # a hunter's own spot on a ring round a player standing out of reach on a roof (see _approach_goal)
+var _roof_t := 0.0
+var pace := 1.0                  # multiplies the chase speed (bunching at corners)
 var fatigue := 1.0                # multiplies the stamina drain of running (the two stragglers of the chase)
 var damage_scale := 1.0           # multiplies the damage he takes
 var grenade_drop := -1            # >= 0: he drops exactly this many grenades (the stragglers); -1 = the random drop of his kind
@@ -220,6 +231,11 @@ var _aim_pose := 0.0
 var muzzle: Node3D
 var laser: MeshInstance3D
 var hitboxes: Array[Area3D] = []
+var _anim_iv := 0.0                  # seconds between animation / hit box updates (animation LOD), 0 = every tick
+var _sync_acc := 0.0
+var _bone_boxes: Array = []       # clip models: {area, bone, local} for every hit box that rides on a bone
+var _td_t := 0.0                    # > 0: the victim of a takedown is still struggling; the death clip starts when it runs out
+var _td_sign := 1.0                 # +1 pulled back from behind, -1 doubled over a blade from the front
 var _rng := RandomNumberGenerator.new()
 
 
@@ -353,6 +369,8 @@ func _build_model() -> void:
 	tilt.add_child(model)
 	if TINT.has(kind):
 		_tint(model.body, TINT[kind])
+	if not NO_ARMOUR:
+		model.armour = InvaderArmour.build(model, kind)
 	# the weapon: our own model (the very mesh that lies on the ground when he dies), grip at the holder's origin
 	gun = Node3D.new()
 	var gm := GunModels.build(weapon_id, 1)
@@ -377,12 +395,19 @@ func _build_model() -> void:
 		laser.visible = false
 		laser.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(laser)
-	# hit boxes (never overlap each other, so a ray picks exactly one part)
-	_hitbox("legs", BoxShape3D.new(), Vector3(0.42, 0.8, 0.32), Vector3(0, 0.4, 0))
-	_hitbox("body", BoxShape3D.new(), Vector3(0.7, 0.66, 0.4), Vector3(0, 1.13, 0))
-	var sph := SphereShape3D.new()
-	sph.radius = 0.17
-	_hitbox("head", sph, Vector3.ZERO, Vector3(0, 1.64, 0))
+	if model.layer != null:
+		# clip models: the hit boxes ride on the bones (head, chest, pelvis, arms, legs), so a shot lands where the body is
+		# in the middle of a run, a crouch or a death fall (`_sync_hitboxes` moves them with the animation)
+		for spec in model.hit_specs(body_scale):
+			_bone_hitbox(spec)
+		_sync_hitboxes()
+	else:
+		# the M4 soldier has no clips: static boxes (squashed by `hit_root` while he sits)
+		_hitbox("legs", BoxShape3D.new(), Vector3(0.42, 0.8, 0.32), Vector3(0, 0.4, 0))
+		_hitbox("body", BoxShape3D.new(), Vector3(0.7, 0.66, 0.4), Vector3(0, 1.13, 0))
+		var sph := SphereShape3D.new()
+		sph.radius = 0.17
+		_hitbox("head", sph, Vector3.ZERO, Vector3(0, 1.64, 0))
 
 
 ## Multiply every surface colour of a model (blade fighters and gunners reuse the other soldiers' models).
@@ -406,7 +431,7 @@ func _hitbox(part: String, shape: Shape3D, size: Vector3, pos: Vector3) -> void:
 	a.monitoring = false
 	a.set_meta("part", part)
 	a.set_meta("enemy", self)
-	if shape is BoxShape3D:
+	if shape is BoxShape3D and size != Vector3.ZERO:
 		(shape as BoxShape3D).size = size
 	var cs := CollisionShape3D.new()
 	cs.shape = shape
@@ -414,6 +439,27 @@ func _hitbox(part: String, shape: Shape3D, size: Vector3, pos: Vector3) -> void:
 	a.position = pos
 	hit_root.add_child(a)
 	hitboxes.append(a)
+
+
+## A hit box that follows a bone: `spec` comes from `CharModel.hit_specs`. It is top level (world metres, no scale from the rig).
+func _bone_hitbox(spec: Dictionary) -> void:
+	_hitbox(String(spec["part"]), spec["shape"], Vector3.ZERO, Vector3.ZERO)
+	var a: Area3D = hitboxes[hitboxes.size() - 1]
+	a.top_level = true
+	_bone_boxes.append({"area": a, "bone": int(spec["bone"]), "local": spec["local"]})
+
+
+## Put every bone-bound hit box where its bone is now. Called after each animation step. A distant soldier (animation LOD) moves
+## his boxes at the same slower rate as his bones (11 physics-server moves per soldier per tick are the dearest part of him): the
+## error is at most one step of his walk, 0.13 m at 70 m and 0.25 m at 120 m, well inside the aim spread at that range.
+func _sync_hitboxes(force := false) -> void:
+	if _anim_iv > 0.0 and not force:
+		_sync_acc += get_physics_process_delta_time()
+		if _sync_acc < _anim_iv:
+			return
+		_sync_acc = 0.0
+	for bb in _bone_boxes:
+		(bb["area"] as Area3D).global_transform = model.bone_world(bb["bone"], bb["local"])
 
 
 # ---------------------------------------------------------------- damage
@@ -426,6 +472,8 @@ func take_hit(damage: float, part: String, impulse: Vector3, point: Vector3) -> 
 	knock += Vector3(impulse.x, 0.0, impulse.z) + Vector3(0, minf(impulse.length() * 0.25, 1.5), 0)
 	stun = maxf(stun, 0.1 + minf(damage / 250.0, 0.25))
 	flinch = 1.0
+	if model.layer != null and health > 0.0:       # hit reaction: the bones answer the blow (torso shoved, head whipped, knees give)
+		model.layer.flinch(part, model.skeleton.global_transform.basis.inverse() * impulse, 1.0 if part == "head" else clampf(damage / 40.0, 0.45, 1.0))
 	if charging:     # a hit throws off the marksman's aim
 		_cancel_charge()
 		cooldown = maxf(cooldown, 1.2)
@@ -518,6 +566,9 @@ func _drop_loot() -> void:
 func _die(impulse: Vector3, silent: bool = false) -> void:
 	Game.mark("enemy_death")
 	state = State.DEAD
+	_anim_iv = 0.0
+	if model != null:
+		model.lod_tick(0.0, 0.0)           # the death clip runs on its own again
 	reloading = false
 	winded_t = 0.0
 	_cancel_charge()
@@ -532,6 +583,7 @@ func _die(impulse: Vector3, silent: bool = false) -> void:
 	for h in hitboxes:
 		h.queue_free()
 	hitboxes.clear()
+	_bone_boxes.clear()
 	collision_layer = 0
 	collision_mask = Game.L_WORLD
 	if not silent:
@@ -546,7 +598,10 @@ func _die(impulse: Vector3, silent: bool = false) -> void:
 		model.rotation.y = (atan2(flat.x, flat.z) - rig.rotation.y) if flat.length() > 0.1 else 0.0
 		if model.player != null:
 			model.player.active = true       # a calm far soldier had his animation paused: the death must play
-		model.play_once("death", 1.0)
+		if _td_t > 0.0:
+			model.layer.takedown(1.0, _td_sign)      # a takedown: he struggles first, `_dead_step` starts the fall
+		else:
+			model.play_once("death", 1.0, 0.12)
 	else:
 		if model.model_id == "soldier":
 			_pose_limp()
@@ -586,6 +641,35 @@ func _nav_dir(target: Vector3, delta: float, direct: bool) -> Vector3:
 		else:
 			return wp.normalized()
 	return to.normalized() if to.length() > 0.6 else Vector3.ZERO
+
+
+## Where a hunter runs. Normally to where the player was last seen. When that spot is up on a roof nobody can climb to (its nav cell is
+## the building's footprint, so every hunter used to run to the same corner at the foot of the wall), each hunter takes his own spot on
+## a ring 9 - 16 m round the player, one with a clear line up to him, and picks another every few seconds: they spread out and shoot up.
+func _approach_goal(delta: float) -> Vector3:
+	if last_known.y - global_position.y < ROOF_REACH or City.layer_of(last_known) >= 0:
+		_roof_goal = Vector3.INF
+		return last_known
+	_roof_t -= delta
+	if _roof_goal != Vector3.INF and _roof_t > 0.0 and Vector2(_roof_goal.x - last_known.x, _roof_goal.z - last_known.z).length() < 20.0:
+		return _roof_goal
+	_roof_t = _rng.randf_range(4.0, 8.0)
+	var target := last_known + Vector3(0.0, 1.0, 0.0)
+	var space := get_world_3d().direct_space_state
+	var base := _rng.randf() * TAU
+	var best := Vector3.INF
+	for i in 10:
+		var a := base + float(i) * 0.63
+		var p := Vector3(last_known.x + cos(a) * _rng.randf_range(9.0, 16.0), global_position.y, last_known.z + sin(a) * _rng.randf_range(9.0, 16.0))
+		if not City.is_free(p):
+			continue
+		if best == Vector3.INF:
+			best = p                      # fallback: a free spot even without a view
+		if space.intersect_ray(PhysicsRayQueryParameters3D.create(p + Vector3(0.0, 1.65, 0.0), target, Game.L_WORLD)).is_empty():
+			best = p
+			break
+	_roof_goal = best if best != Vector3.INF else last_known
+	return _roof_goal
 
 
 func _eye_pos() -> Vector3:
@@ -644,6 +728,22 @@ func _sees_player() -> bool:
 	return _los_to_player()
 
 
+## Seconds between animation updates for a soldier `d2` (squared metres) from the player: every frame up close, then 30 / 15 / 8
+## Hz with distance; one that is behind the player (out of the view cone) is stepped at 8 Hz from 12 m on.
+func _anim_interval(d2: float, in_view: bool) -> float:
+	if ANIM_LOD_OFF or d2 < ANIM_NEAR * ANIM_NEAR:
+		return 0.0
+	if d2 > ANIM_FAR * ANIM_FAR:
+		return 0.125
+	if d2 > ANIM_MID * ANIM_MID:
+		return 0.066
+	if d2 > ANIM_STEP2 * ANIM_STEP2:
+		return 0.033
+	if d2 > 144.0 and not in_view:
+		return 0.125
+	return 0.0
+
+
 func _physics_process(delta: float) -> void:
 	if state == State.DEAD:
 		_dead_step(delta)
@@ -654,7 +754,12 @@ func _physics_process(delta: float) -> void:
 	if model != null and model.player != null and state != State.DEAD:
 		# far calm soldiers do not need their skeleton animated
 		var d2a := global_position.distance_squared_to(player.global_position)
-		model.player.active = (state != State.WANDER and d2a < 10000.0) or (d2a < 2500.0 and player.camera.is_position_in_frustum(global_position + Vector3(0, 1.0, 0)))
+		var in_view := d2a < 2500.0 and player.camera.is_position_in_frustum(global_position + Vector3(0, 1.0, 0))
+		model.player.active = (state != State.WANDER and d2a < 10000.0) or in_view
+		_anim_iv = _anim_interval(d2a, in_view)
+		model.lod_tick(delta, _anim_iv)
+		if not model.armour.is_empty():
+			model.show_armour(d2a < InvaderArmour.SHOW_DIST * InvaderArmour.SHOW_DIST * (1.2 if model._armour_shown else 1.0))
 	# Far-away wanderers are not worth a full update: about 5 a second, the step scaled up to match (see move_and_slide below)
 	var lod_scale := 1.0
 	if state == State.WANDER and global_position.distance_squared_to(player.global_position) > LOD_DIST * LOD_DIST:
@@ -667,6 +772,8 @@ func _physics_process(delta: float) -> void:
 	cooldown = maxf(0.0, cooldown - delta)
 	_tick_reload(delta)
 	flinch = move_toward(flinch, 0.0, delta * 5.0)
+	if model.layer != null:
+		model.layer.step(delta)
 	knock = knock.move_toward(Vector3.ZERO, KNOCK_DECAY * delta * maxf(1.0, knock.length() * 0.6))
 
 	var want := Vector3.ZERO     # desired horizontal velocity
@@ -721,12 +828,15 @@ func _physics_process(delta: float) -> void:
 				if seen_delay > 0.0:           # slow to take in what he sees (the alleys of the chase: ChaseFight sets this)
 					_seen_acc = _seen_acc + delta if seen_now else 0.0
 					seen_now = seen_now and _seen_acc >= seen_delay
+				if knows_player and not Game.dead:
+					seen_now = true
 				if seen_now:
 					last_known = player.global_position
 					unseen_t = 0.0
 				else:
 					unseen_t += delta
-				var to_goal := last_known - global_position
+				var goal := _approach_goal(delta)
+				var to_goal := goal - global_position
 				to_goal.y = 0.0
 				var goal_d := to_goal.length()
 				var dirv := Vector3.ZERO
@@ -737,7 +847,7 @@ func _physics_process(delta: float) -> void:
 					rig.rotation.y = facing
 					spd = 0.0
 				else:
-					dirv = _nav_dir(last_known, delta, seen_now and dist < 14.0)
+					dirv = _nav_dir(goal, delta, seen_now and dist < 14.0 and goal == last_known)
 					dirv += _separation() * 0.8
 					# stuck on something? sidestep around it for a moment
 					if side_t > 0.0:
@@ -842,6 +952,7 @@ func _physics_process(delta: float) -> void:
 			velocity.x = vx
 			velocity.z = vz
 			velocity.y = -1.0 if is_on_floor() else vy
+			_sync_hitboxes(true)
 			return
 		move_and_slide()
 		move_and_slide()
@@ -1306,9 +1417,18 @@ func remove_helmet() -> void:
 				mat.albedo_color = Color(0.86, 0.66, 0.54)
 
 
-## Instant, silent kill (no death cry, nobody is alerted).
-func takedown() -> void:
+## Instant, silent kill (no death cry, nobody is alerted). `from` is where the attacker stands: a clip model first
+## struggles for TAKEDOWN_STRUGGLE (head yanked back, back arched, arms up, knees giving - or doubled over when the
+## attacker is in front of him), then falls with the death clip, toward the attacker.
+func takedown(from: Vector3 = Vector3.INF) -> void:
 	health = 0.0
+	if model.layer != null and model.has_anim("death"):
+		_td_t = TAKEDOWN_STRUGGLE
+		_td_sign = 1.0
+		if from != Vector3.INF:
+			var to_att := Vector3(from.x - global_position.x, 0.0, from.z - global_position.z)
+			if Vector3(-sin(facing), 0.0, -cos(facing)).dot(to_att) > 0.0:
+				_td_sign = -1.0
 	_die(Vector3.ZERO, true)
 
 
@@ -1352,7 +1472,7 @@ func _shoot_step(delta: float, to_player: Vector3, dist: float) -> Array:
 	var los := _los_to_player()
 	_face(to_player, delta, 10.0 if not charging else 14.0)
 	seen_now = los
-	if los:
+	if los or knows_player:
 		last_known = player.global_position
 		unseen_t = 0.0
 	else:
@@ -1519,6 +1639,8 @@ func _fire_bolt() -> void:
 			if is_instance_valid(victim):
 				victim.take_hit(float(cfg["dmg"]) * 2.0, String((col as Area3D).get_meta("part")), (end - from).normalized() * 3.0, end)
 	_bolt(from, end)
+	if model.layer != null:
+		model.layer.kick(1.0)
 	if not at_civilian:
 		Game.enemy_fired.emit(self)
 	var wd: Dictionary = WeaponsDB.WEAPONS[weapon_id]
@@ -1557,7 +1679,8 @@ func _animate(delta: float, speed: float) -> void:
 	else:
 		_animate_clips(delta, speed, aiming)
 	var cross := model.model_id != "soldier"
-	tilt.rotation.x = (0.16 if speed > RUN_ANIM_SPEED and cross else (0.24 if speed > RUN_ANIM_SPEED else 0.0)) - flinch * 0.25
+	# clip models answer a hit through the bones (PoseLayer); the soldier without clips tips his whole body
+	tilt.rotation.x = (0.16 if speed > RUN_ANIM_SPEED and cross else (0.24 if speed > RUN_ANIM_SPEED else 0.0)) - (flinch * 0.25 if model.layer == null else 0.0)
 	hit_root.scale.y = lerpf(hit_root.scale.y, SIT_HIT_SCALE if state == State.EXHAUSTED else (0.74 if (kind == "marksman" and _aim_pose > 0.5) else 1.0), 1.0 - exp(-10.0 * delta))
 	if state == State.EXHAUSTED:
 		tilt.rotation.x = 0.1 + sin(Time.get_ticks_msec() * 0.011) * 0.035      # heaving, shoulders against the wall
@@ -1568,6 +1691,7 @@ func _animate(delta: float, speed: float) -> void:
 		tilt.position = Vector3(0.0, 0.86 * (1.0 - cos(a)), -0.86 * sin(a))
 	else:
 		tilt.position.z = 0.0
+	_sync_hitboxes()
 
 
 ## Clip-driven soldiers (agile futuristic model, marksman model): pick the clip that fits what he is doing.
@@ -1676,6 +1800,13 @@ func _pose_limp() -> void:
 	m.ik_arm("L", m.skeleton.to_local(tilt.to_global(Vector3(-0.28, 0.75, 0.0))), Vector3(0.3, -1.0, 0.5))
 
 func _dead_step(delta: float) -> void:
+	if model.layer != null:
+		model.layer.step(delta)
+		if _td_t > 0.0:
+			_td_t -= delta
+			if _td_t <= 0.0:
+				model.layer.takedown(0.0)
+				model.play_once("death", 1.0, 0.18)
 	knock = knock.move_toward(Vector3.ZERO, 5.0 * delta)
 	velocity.x = knock.x
 	velocity.z = knock.z

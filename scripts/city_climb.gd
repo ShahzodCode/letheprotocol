@@ -314,6 +314,14 @@ static func _plan_passages(rng: RandomNumberGenerator) -> void:
 		var rect := Rect2(c.x - depth * 0.5, c.y - width * 0.5, depth, width) if along_x else Rect2(c.x - width * 0.5, c.y - depth * 0.5, width, depth)
 		if CityWar.occ != null and CityWar.occ.hits(rect, -0.2):
 			continue
+		var at_mouth := false
+		for tn in City.tunnels:                 # a pass-through building's mouth must stay open (the nav grid has to lead out of it)
+			for end in ["a", "b"]:
+				var e: Vector3 = tn[end]
+				if rect.grow(1.0).intersects(Rect2(e.x - 2.5, e.z - 2.5, 5.0, 5.0)):
+					at_mouth = true
+		if at_mouth:
+			continue
 		City.crouch_passages.append({"pos": Vector3(c.x, 0.0, c.y), "rect": rect, "along_x": along_x, "width": width, "kind": kind, "bottom": BLOCKER_BOTTOM})
 	passage_count = City.crouch_passages.size()
 

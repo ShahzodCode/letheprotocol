@@ -102,6 +102,7 @@ static var tunnels: Array = []      # {rect (the 3 m corridor), runs_z, length, 
 static var crouch_passages: Array = []   # {pos, rect, along_x, width, kind: pipe | ladder | slab | gap, bottom}: alleys passable only crouched
 static var lights: Array = []       # {pos: Vector3, range: float, energy: float, color: Color}
 static var layers: Array = []       # nav layers (interior / balcony grids linked to a parent grid at one spot)
+static var lots: Array = []         # {b: the building dict, r: the lot rectangle}: every generated lot (not the hand-built places), for CityLinks
 static var _astar: AStarGrid2D = null
 static var _main_grid: Dictionary = {}
 static var _cum: PackedFloat32Array = PackedFloat32Array()   # cumulative street weights, for random spawn spots
@@ -140,6 +141,7 @@ static func generate(seed_value: int = 2077) -> void:
 	CityStory.reset()
 	lights.clear()
 	layers.clear()
+	lots.clear()
 	for x in AVENUE_X:
 		var w := avenue_width(x)
 		streets.append({"rect": Rect2(x - w * 0.5, -IN_Z, w, IN_Z * 2.0), "cls": _class_of(w)})
@@ -163,6 +165,7 @@ static func generate(seed_value: int = 2077) -> void:
 				_subdivide(rng, block, 0)
 	_make_lanes(rng)
 	_make_border(rng)
+	CityLinks.link(seed_value)                  # cut-throughs and aligned crossings so the back streets form a network (own random stream)
 	_make_backdrop(rng)
 	_pick_sites(rng)
 	_make_obstacles(seed_value)
@@ -380,7 +383,9 @@ static func _make_lot(rng: RandomNumberGenerator, r: Rect2) -> void:
 	else:
 		streets.append({"rect": r, "cls": "plaza"})   # an empty lot: small square
 		return
-	buildings.append({"rect": fp, "boxes": boxes, "style": style, "color": col, "h": h})
+	var b := {"rect": fp, "boxes": boxes, "style": style, "color": col, "h": h}
+	buildings.append(b)
+	lots.append({"b": b, "r": r})
 
 
 ## Buildings shoulder to shoulder around the whole map: nobody can leave, and avenues end in towers, not in a wall.

@@ -2,6 +2,8 @@ extends Node
 ## Character viewer: `godot --path . --rendering-driver opengl3 -- --script res://tests/char_view.gd kind:mode ... out=<png>`
 ## modes: idle walk run aim reload melee dead (enemies)  |  civ-idle civ-run civ-walk civ-dead civ-hit (civilians, kind = outfit seed)
 var main
+var far := 1.0         # far=1.4: the camera stands farther back (tall kinds); look=1.1: it looks at that height
+var look_y := 0.9
 const CAM_SPOTS := [Vector3(2.0, 1.4, -3.2), Vector3(3.6, 1.4, 0.8)]
 
 func run(m) -> void:
@@ -12,6 +14,10 @@ func run(m) -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("out="):
 			out_path = a.substr(4)
+		elif a.begins_with("far="):
+			far = float(a.substr(4))
+		elif a.begins_with("look=") :
+			look_y = float(a.substr(5))
 		elif ":" in a and not a.begins_with("out") and not a.begins_with("res:"):
 			specs.append(a)
 	main.hud.visible = false
@@ -86,8 +92,8 @@ func run(m) -> void:
 				var fo := sk.get_bone_global_pose(cmod.bone("forearm." + side)).origin
 				print(side, " arm ", a, " elbow ", fo, " hand ", h, " gun in skel ", sk.to_local((node as Enemy).gun.global_position), " unit ", cmod.unit())
 		for v in CAM_SPOTS:
-			cam.global_position = origin + v
-			cam.look_at(origin + Vector3(0, 0.9, 0))
+			cam.global_position = origin + Vector3(v.x * far, 1.4 + (look_y - 0.9) * 0.5, v.z * far)
+			cam.look_at(origin + Vector3(0, look_y, 0))
 			await RenderingServer.frame_post_draw
 			var im: Image = get_viewport().get_texture().get_image()
 			im.convert(Image.FORMAT_RGBA8)

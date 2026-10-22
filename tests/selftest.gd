@@ -278,12 +278,18 @@ func run(m) -> void:
 	place(e2, Vector3(0, 0, -80), true)
 	await secs(0.6)
 	var hpf := e2.health
-	aim_at(e2.global_position + Vector3(0, 1.13, 0))
-	w.ads_k = 1.0
-	w.bloom = 0.0
-	w._fire_shot()
-	await frames(2)
-	var far_dmg := hpf - e2.health
+	var far_dmg := 0.0
+	for attempt in 25:      # spread is random and the chest box is narrower than the old body box: try again on a miss
+		w.state[w.current]["ammo"] = maxi(2, int(w.state[w.current]["ammo"]))
+		aim_at(e2.global_position + Vector3(0, 1.13, 0))
+		w.ads_k = 1.0
+		w.bloom = 0.0
+		w.cooldown = 0.0
+		w._fire_shot()
+		await frames(2)
+		far_dmg = hpf - e2.health
+		if far_dmg > 0.0:
+			break
 	check("damage falls off with distance (80 m)", far_dmg > 0.0 and far_dmg < 24.0, "%.1f at 80 m" % far_dmg)
 
 	# accuracy: ADS standing vs hip moving
@@ -1026,6 +1032,7 @@ func run(m) -> void:
 	await grenade_tests()
 	await civilian_tests()
 	await character_tests()
+	await bone_hitbox_tests()
 	await street_tests()
 	await building_tests()
 	await climb_tests()
@@ -1087,7 +1094,7 @@ func mission_and_map_tests() -> void:
 	var texts: Array = []
 	for o in ms.objectives:
 		texts.append(String(o["text"]))
-	check("the story mission starts with the three Chapter One objectives in order, then the roof, the lookout, the marksman, his rifle, the park fight and the lanes (The Lander, part one)", ms.id == "chapter_one" and texts.slice(0, 3) == ["LEAVE THE INSTITUTE", "GET HOME", "GO TO THE CELLAR"] and texts.slice(3, 8) == ["CLIMB TO THE ROOF", "LOOK OUT OVER THE CITY", "TAKE OUT THE MARKSMAN ON THE BALCONY", "TAKE HIS RIFLE", "THIN OUT THE GUARDS AT THE RAMP"], str(texts))
+	check("the story mission starts with the three Chapter One objectives in order, then the roof, the lookout, the marksman, his rifle, the park fight and the lanes (The Lander, part one)", ms.id == "chapter_one" and texts.slice(0, 3) == ["LEAVE THE INSTITUTE", "GET HOME", "GO TO THE CELLAR"] and texts.slice(3, 7) == ["CLIMB TO THE ROOF", "LOOK OUT OVER THE CITY", "KILL THE MARKSMAN - HE HAS SEEN YOU", "THIN OUT THE GUARDS AT THE RAMP"], str(texts))
 	check("enemies respawn in the sandbox mission only", not ms.respawn_enemies and Mission.sandbox().respawn_enemies)
 	check("the first objective is active and the marker hangs over it", ms.index == 0 and main.world._marker.visible and main.world._marker.position.y > 60.0 and absf(main.world._marker.position.x - City.INSTITUTE_EXIT.x) < 1.0 and absf(main.world._marker.position.z - City.INSTITUTE_EXIT.z) < 1.0)
 	check("the first objective saved a checkpoint", main.checkpoint != null and main.checkpoint.objective == 0 and Game.has_checkpoint)
@@ -1126,7 +1133,11 @@ func mission_and_map_tests() -> void:
 	for c in saved:
 		grid.set_point_solid(c, false)
 	var b_len := plen(City.INSTITUTE_EXIT, back)
-	check("with the wide avenue closed a longer back route through streets and alleys still leads home", back.size() > 1 and b_len > d_len * 1.15, "direct %.0f m, back %.0f m" % [d_len, b_len])
+	check("with the wide avenue closed a longer back route through streets and alleys still leads home", back.size() > 1 and b_len > d_len * 1.05, "direct %.0f m, back %.0f m" % [d_len, b_len])
+	var links_cut := 0
+	for k in CityLinks.done:
+		links_cut += int(CityLinks.done[k])
+	check("CityLinks cut passages through lots (crossings, merges, loops) so the back streets form a network", links_cut >= 30 and int(CityLinks.done["cross"]) >= 8, str(CityLinks.done))
 	check("alleys and footpaths between the Institute and the home are quieter, the avenue busier", City.spawn_weight("alley", Rect2(0, 0, 3, 100)) < City.spawn_weight("alley", Rect2(100, 0, 3, 100)) and City.spawn_weight("walk", Rect2(0, 0, 8, 100)) < City.spawn_weight("walk", Rect2(100, 0, 8, 100)) and City.spawn_weight("avenue", Rect2(0, 0, 24, 100)) > City.spawn_weight("avenue", Rect2(100, 0, 24, 100)))
 	var sites_ok := true
 	for s in City.sites:
@@ -2280,12 +2291,12 @@ func character_tests() -> void:
 		i += 1
 		if e.model.model_id != want[k] or e.model.skeleton.get_bone_count() < 30:
 			models_ok = false
-		if e.hitboxes.size() != 3:
+		if e.hitboxes.size() != (3 if e.model.layer == null else 11):
 			boxes_ok = false
 		if e.ranged and e.muzzle == null:
 			muzzle_ok = false
 	check("every kind wears its skinned model (soldier -> M4 soldier, rifleman / blade -> agile, marksman / gunner -> marksman)", models_ok)
-	check("each soldier keeps his three hit boxes", boxes_ok)
+	check("the M4 soldier keeps his three static hit boxes, the clip models have eleven on the bones", boxes_ok)
 	check("ranged soldiers hold a gun with a muzzle", muzzle_ok)
 	await secs(0.6)
 	var hand_ok := true
@@ -2426,6 +2437,165 @@ func band_blockers(from: Vector3, to: Vector3) -> int:
 			print("   blocker at ", hp)
 		cur = hp + dir * 0.4
 	return n
+
+
+## First part hit by a ray that ends at `to` (hit boxes only), "" when none.
+func hit_part(from: Vector3, to: Vector3) -> String:
+	var q := PhysicsRayQueryParameters3D.create(from, to, Game.L_HITBOX)
+	q.collide_with_areas = true
+	q.collide_with_bodies = false
+	var hit := player.get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty() or not (hit["collider"] as Object).has_meta("part"):
+		return ""
+	return String((hit["collider"] as Object).get_meta("part"))
+
+
+func box_of(e: Enemy, part: String, idx: int = 0) -> Area3D:
+	var n := 0
+	for h in e.hitboxes:
+		if h.get_meta("part") == part:
+			if n == idx:
+				return h
+			n += 1
+	return null
+
+
+## Hit boxes on the bones, animation cross-fades, flinch, takedown victim.
+func bone_hitbox_tests() -> void:
+	print("--- hit boxes on bones, blending, flinch, takedown ---")
+	await park_all()
+	await clear_civilians()
+	tp(Vector3(0, 0.1, 150.0))
+	var rf := spawn("rifleman", Vector3(210.0, 0.0, 80.0))
+	var mk := spawn("marksman", Vector3(210.0, 0.0, 86.0))
+	var sd := spawn("soldier", Vector3(210.0, 0.0, 92.0))
+	await secs(0.5)
+	var parts := {}
+	for h in rf.hitboxes:
+		parts[String(h.get_meta("part"))] = true
+	check("a rifleman's eleven hit boxes ride on bones and cover head, body, arms and legs", rf.hitboxes.size() == 11 and rf._bone_boxes.size() == 11 and parts.size() == 4 and parts.has("head") and parts.has("arms") and parts.has("legs") and parts.has("body"), str(parts.keys()))
+	check("the M4 soldier has no clips: three static boxes", sd.hitboxes.size() == 3 and sd._bone_boxes.is_empty() and mk._bone_boxes.size() == 11)
+	# the boxes keep up with the skeleton through a run cycle
+	rf.set_physics_process(false)
+	rf.model.lod_tick(0.0, 0.0)          # 70 m from the player he would be stepped by hand by his own (now stopped) physics tick
+	rf.model.player.active = true
+	rf.model.play_once("run", 1.0, 0.0)
+	var worst := 0.0
+	var head_y := []
+	for i in 6:
+		await secs(0.11)
+		rf._sync_hitboxes(true)
+		var hand := rf.model.hand_node.global_position
+		var fore := box_of(rf, "arms", 3).global_position       # right forearm
+		var head := rf.model.head_node.global_position
+		worst = maxf(worst, maxf(hand.distance_to(fore), head.distance_to(box_of(rf, "head").global_position)))
+		head_y.append(box_of(rf, "head").global_position.y)
+	check("through a run cycle the hand sits at a forearm box and the head box over the head bone", worst < 0.3, "%.2f m" % worst)
+	var hy_min := 9.0
+	var hy_max := 0.0
+	for y in head_y:
+		hy_min = minf(hy_min, y)
+		hy_max = maxf(hy_max, y)
+	check("the head box bobs with the run (not a fixed box)", hy_max - hy_min > 0.02, "%.3f m" % (hy_max - hy_min))
+	# a crouching marksman's head box drops
+	mk.set_physics_process(false)
+	mk.model.lod_tick(0.0, 0.0)
+	mk.model.player.active = true
+	mk.model.play_once("idle", 1.0, 0.0)
+	await secs(0.4)
+	mk._sync_hitboxes(true)
+	var stand_y := box_of(mk, "head").global_position.y - mk.global_position.y
+	mk.model.play_once("aim", 1.0, 0.0)
+	await secs(0.5)
+	mk._sync_hitboxes(true)
+	var crouch_y := box_of(mk, "head").global_position.y - mk.global_position.y
+	check("the marksman's head box drops when he crouches to aim", stand_y - crouch_y > 0.15, "%.2f -> %.2f m" % [stand_y, crouch_y])
+	# rays find the right parts and the damage multipliers are unchanged
+	var hc := box_of(rf, "head").global_position
+	check("a ray from above into the head box reports the head", hit_part(hc + Vector3(0, 1.0, 0), hc) == "head", hit_part(hc + Vector3(0, 1.0, 0), hc))
+	var lc := box_of(rf, "legs").global_position
+	check("a ray from the side into a shin or thigh box reports the legs", hit_part(lc + Vector3(2.0, 0, 0), lc) == "legs" or hit_part(lc + Vector3(-2.0, 0, 0), lc) == "legs")
+	var w: Weapons = player.weapons
+	var s := w.stats()
+	check("damage multipliers are as before (head x%.1f, legs x0.75)" % float(s["head_mult"]), float(s["head_mult"]) > 1.5)
+	# smooth blending
+	var pm := CharModel.make("agile", 1.75)
+	add_child(pm)
+	pm.play("walk", 1.0)
+	await frames(30)
+	var ph0 := pm.player.current_animation_position / pm.player.current_animation_length
+	pm.play("run", 1.0)
+	await frames(1)
+	var ph1 := pm.player.current_animation_position / pm.player.current_animation_length
+	check("walk -> run keeps the stride phase", absf(ph1 - ph0) < 0.1 or absf(absf(ph1 - ph0) - 1.0) < 0.1, "%.2f -> %.2f" % [ph0, ph1])
+	check("the cross-fade time depends on the pair (shot fast, gait change slower, standing slowest)", pm.blend_time("aim", "shoot") < pm.blend_time("walk", "run") and pm.blend_time("walk", "run") < pm.blend_time("idle", "walk"))
+	await frames(5)
+	pm.play("idle", 1.0)
+	await frames(2)
+	check("a state wobble does not flicker the clip (a change within 0.2 s is held back)", pm.current == "run")
+	await frames(30)
+	pm.play("idle", 1.0)
+	check("...and goes through after that", pm.current == "idle")
+	pm.queue_free()
+	# flinch
+	rf.model.play_once("idle", 1.0, 0.0)
+	await secs(0.3)
+	rf.set_physics_process(true)
+	rf.stun = 999.0
+	rf.health = 1000.0
+	rf.max_health = 1000.0
+	await secs(0.3)
+	var head_rest := rf.model.head_node.global_position - rf.global_position
+	rf.take_hit(12.0, "body", Vector3(0, 0, -4.0), rf.global_position + Vector3(0, 1.2, 0))
+	await frames(4)
+	var bent := ((rf.model.head_node.global_position - rf.global_position) - head_rest).length()
+	check("a hit makes the head swing (bones answer the blow, not a body tilt)", bent > 0.03 and absf(rf.tilt.rotation.x) < 0.05, "%.3f m" % bent)
+	await secs(0.6)
+	check("...and the flinch is gone 0.6 s later", rf.model.layer.is_idle())
+	# takedown pair: victim struggles, then falls with the death clip toward the attacker
+	tp(Vector3(210.0, 0.1, 59.0))
+	var vt := spawn("rifleman", Vector3(210.0, 0.0, 60.0))
+	vt.facing = PI
+	vt.rig.rotation.y = PI
+	await frames(4)
+	vt.takedown(player.global_position)
+	check("a takedown kills at once", vt.state == Enemy.State.DEAD and vt.hitboxes.is_empty())
+	await secs(0.3)
+	check("...but the victim is still on his feet, thrashing (back arched, not yet the death clip)", vt.model.current != "death" and vt.model.layer._td_shown > 0.5 and vt._td_sign > 0.0, "%.2f" % vt.model.layer._td_shown)
+	await secs(1.8)
+	check("...then the death clip takes him down and the struggle is released", vt.model.current == "death" and corpse_lying(vt) and vt.model.layer._td_shown < 0.05)
+	var vf := spawn("rifleman", Vector3(210.0, 0.0, 50.0))
+	vf.facing = 0.0
+	vf.rig.rotation.y = 0.0
+	tp(Vector3(210.0, 0.1, 49.0))
+	await frames(4)
+	vf.takedown(player.global_position)
+	check("stabbed from the front he doubles over instead (opposite lean)", vf._td_sign < 0.0)
+	await secs(2.0)
+	# animation update-rate LOD: a soldier far away is stepped by hand at a lower rate, a near one runs on his own
+	tp(Vector3(210.0, 0.1, 40.0))
+	await frames(4)
+	var pp := player.global_position
+	var far := spawn("rifleman", Vector3(pp.x, 0.0, pp.z - 80.0))
+	var near := spawn("rifleman", Vector3(pp.x, 0.0, pp.z - 5.0))
+	place(far, Vector3(pp.x, 0.0, pp.z - 80.0), true)       # (the spawner clamps x to the city: put them exactly)
+	place(near, Vector3(pp.x, 0.0, pp.z - 5.0), true)
+	await frames(2)
+	far.model.play("idle", 1.0)
+	var pos0 := 0.0
+	var pos1 := 0.0
+	for i in 108:        # 0.9 s; the AI would drop an idle HOLD back to WANDER (a far wanderer is not animated at all), so keep it
+		far.state = Enemy.State.HOLD
+		near.state = Enemy.State.HOLD
+		await frames(1)
+		if i == 54:
+			pos0 = far.model.player.current_animation_position
+	pos1 = far.model.player.current_animation_position
+	check("a soldier 80 m away has his animation stepped by hand at a lower rate", far.model._lod_manual and far._anim_iv > 0.05 and far.model.player.callback_mode_process == AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL, "%.3f s" % far._anim_iv)
+	check("...and his clip keeps playing", absf(pos1 - pos0) > 0.05, "%.2f -> %.2f" % [pos0, pos1])
+	check("a soldier 5 m away animates every frame", not near.model._lod_manual and near._anim_iv == 0.0, "%.1f m, manual %s, iv %.3f" % [near.global_position.distance_to(player.global_position), str(near.model._lod_manual), near._anim_iv])
+	far._die(Vector3.ZERO)
+	check("a death puts the player back on its own (the death clip must run)", not far.model._lod_manual and far.model.player.callback_mode_process == AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE)
 
 
 func street_tests() -> void:
@@ -3765,27 +3935,54 @@ func lander_tests() -> void:
 	await secs(4.0)
 	check("if he spots the player he snipes: hunting, laser charging or a shot fired", mk2.state in [Enemy.State.ALERT, Enemy.State.CHASE, Enemy.State.SHOOT] or mk2.charging or player.health < Game.MAX_HEALTH, "state %d hp %.0f" % [mk2.state, player.health])
 	kill(mk2)
+	# the marksman who knows where the player is (the lookout is over) keeps him in his sights wherever he stands
+	var mk3: Enemy = main._spawn_enemy_at(CityStory.MARKSMAN_AT, "marksman", "sniper")
+	all.append(mk3)
+	main._assign_role(mk3, "balcony_marksman")
+	await frames(10)
+	main.alert_marksman()
+	tp(Vector3(54.0, 0.1, -60.0), 0.0)
+	await frames(3)
+	check("alert_marksman: he knows the player's place without seeing him (no gunshot needed) and no longer stands at his post", mk3.knows_player and not mk3.post and mk3.state in [Enemy.State.ALERT, Enemy.State.CHASE, Enemy.State.SHOOT])
+	await secs(1.5)
+	check("... and keeps hunting him instead of losing the trail", mk3.state in [Enemy.State.ALERT, Enemy.State.CHASE, Enemy.State.SHOOT] and mk3.unseen_t < 1.0, "state %d unseen %.1f" % [mk3.state, mk3.unseen_t])
+	kill(mk3)
+	# hunters of a player on a roof they cannot climb to spread round the building instead of all running to one corner
+	if not CityStory.lookout.is_empty():
+		var roof_p: Vector3 = CityStory.lookout["roof"]
+		var hunters: Array = []
+		for hi in 4:
+			var he: Enemy = spawn("soldier", (CityStory.lookout["foot"] as Vector3) + Vector3(6.0 + hi, 0.1, 4.0 * hi - 6.0), false)
+			he.last_known = roof_p
+			hunters.append(he)
+		var goals: Array = []
+		for he in hunters:
+			goals.append(he._approach_goal(0.0))
+		var apart := 0
+		for i in goals.size():
+			for j in range(i + 1, goals.size()):
+				if (goals[i] as Vector3).distance_to(goals[j]) > 3.0:
+					apart += 1
+		check("hunters of a player on the unreachable lookout roof each get their own spot round the building (not one corner)", goals.all(func(g): return g != roof_p and Vector2(g.x - roof_p.x, g.z - roof_p.z).length() < 17.0) and apart >= 4, str(goals))
+		for he in hunters:
+			kill(he)
 	player.health = Game.MAX_HEALTH
 	Game.dead = false
 	Game.pickups.clear()
 	# --- the rifle: picked up from the marksman, in the rifle slot
 	await park_all()
 	tp(Vector3(77.0, City.BALCONY_Y + 0.1, -30.0), PI)
-	var pk_sniper := Pickup.spawn_weapon(main, Vector3(77.0, City.BALCONY_Y + 0.1, -30.0), "sniper", 5)
 	await frames(10)
-	pk_sniper.global_position = Vector3(77.0, City.BALCONY_Y + 0.1, -30.0)
 	check("KILL THE MARKSMAN stays up while one of group 201 lives", String(ms.active()["id"]) == "balcony_marksman", str(ms.active().get("id")))
 	kill(orig_mk)
 	await secs(0.9)
-	check("TAKE HIS RIFLE is active after the marksman is dead", String(ms.active()["id"]) == "take_rifle", str(ms.active().get("id")))
-	w.pick_up(pk_sniper)
-	await secs(0.5)
+	check("the marksman's death hands over the LR-9 and starts THIN OUT THE GUARDS (no separate TAKE HIS RIFLE quest)", String(ms.active()["id"]) == "park_fight", str(ms.active().get("id")))
 	var inst: Dictionary = {}
 	for it in w.loadout["rifle"]:
 		if it["id"] == "sniper":
 			inst = it
 	check("the LR-9 goes into the rifle slot as a rifle-class gun: 5 rounds loaded, a full set of spare magazines", not inst.is_empty() and int(inst["ammo"]) == 5 and (inst["spare"] as Array).size() == 3, str(inst))
-	check("picking it up starts THIN OUT THE GUARDS: a checkpoint at the start of the balcony fight with the rifle and ten guards", String(ms.active()["id"]) == "park_fight" and main.checkpoint.objective == ms.index and main.checkpoint.enemies.filter(func(d): return int(d["group"]) == ParkFight.GUARD_GROUP).size() == 10 and main.checkpoint.loadout["rifle"].any(func(i): return i["id"] == "sniper"))
+	check("a checkpoint at the start of the balcony fight with the rifle and ten guards", String(ms.active()["id"]) == "park_fight" and main.checkpoint.objective == ms.index and main.checkpoint.enemies.filter(func(d): return int(d["group"]) == ParkFight.GUARD_GROUP).size() == 10 and main.checkpoint.loadout["rifle"].any(func(i): return i["id"] == "sniper"))
 	var cp_fight: Checkpoint = main.checkpoint
 	# --- steadying the scope: Shift (or Ctrl) holds the breath for 3 s, then the view jumps
 	w.switch_to("sniper")
@@ -4125,7 +4322,7 @@ func chase_tests() -> void:
 	await frames(10)
 	check("the grenade pickups do not fade (story loot)", Game.pickups.filter(func(pk): return is_instance_valid(pk) and (pk as Pickup).keep and not (pk as Pickup).is_queued_for_deletion()).size() == keep_pks.size())
 	# --- three grenades in the pocket: the courtyard objective, the four gather
-	check("TAKE THE STRAGGLERS' GRENADES waits while there are fewer than 3 grenades", String(ms.active()["id"]) == "take_grenades")
+	check("TAKE THE STRAGGLERS' GRENADES waits while there are fewer than 3 grenades", String(ms.active()["id"]) == "take_grenades", "active %s, %d grenades (carried before %d)" % [ms.active().get("id"), Game.grenades, carried_before])
 	Game.grenades = ChaseFight.GRENADES_NEEDED
 	await secs(0.6)
 	check("with 3 grenades the objective moves on: CLEAR THE COURTYARD (a checkpoint)", String(ms.active()["id"]) == "clear_courtyard" and main.checkpoint.objective == ms.index, str(ms.active().get("id")))
