@@ -381,7 +381,8 @@ static func _roof_garden(b: Dictionary, rng: RandomNumberGenerator, y: float) ->
 	b["green_roof"] = true
 	for i in 4:
 		var p := Vector2(rng.randf_range(r.position.x + 1.5, r.end.x - 1.5), rng.randf_range(r.position.y + 1.5, r.end.y - 1.5))
-		Scn.box(Vector3(p.x, y + 0.5, p.y), Vector3(1.6, 0.5, 1.6), Color(0.78, 0.76, 0.72))
+		Scn.prop(Vector3(p.x, y + 0.5, p.y), Vector3(1.6, 0.5, 1.6), Color(0.78, 0.76, 0.72))
+		Scn.cyl_solid(Vector3(p.x, y + 0.75, p.y), 0.15, 1.4)          # the trunk (the crown is above head height)
 		Scn.between("cyl", Vector3(p.x, y + 0.7, p.y), Vector3(p.x, y + 2.2, p.y), 0.3, Color(0.32, 0.22, 0.14))
 		Scn.part("sphere", Transform3D(Basis.from_scale(Vector3(2.4, 1.9, 2.4)), Vector3(p.x, y + 2.9, p.y)), Color(0.18, 0.36, 0.14).lightened(rng.randf_range(0.0, 0.15)))
 

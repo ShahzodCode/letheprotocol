@@ -602,9 +602,8 @@ static func _hits_building(rect: Rect2) -> bool:
 
 static func _jersey(c: Vector3, yaw: float, rng: RandomNumberGenerator) -> void:
 	var col := _jit(Color(0.62, 0.62, 0.6), rng, 0.1)
-	Scn.box(c + Vector3(0, 0.15, 0), Vector3(3.0, 0.3, 0.6), col, yaw)
-	Scn.box(c + Vector3(0, 0.58, 0), Vector3(3.0, 0.56, 0.36), col.lightened(0.04), yaw)
-	Scn.solid(c + Vector3(0, 0.43, 0), Vector3(3.0, 0.86, 0.6), yaw)
+	Scn.prop(c + Vector3(0, 0.15, 0), Vector3(3.0, 0.3, 0.6), col, yaw)                         # the wide foot...
+	Scn.prop(c + Vector3(0, 0.58, 0), Vector3(3.0, 0.56, 0.36), col.lightened(0.04), yaw)       # ...and the narrower body on it
 	Scn.block(Scn.footprint(Vector2(c.x, c.z), Vector2(1.5, 0.3), yaw), 0.3)
 
 
@@ -617,7 +616,9 @@ static func _sandbags(c: Vector3, yaw: float, rng: RandomNumberGenerator) -> voi
 			var wing := absf(off) * 0.12
 			var pos := c + basis * Vector3(off, 0.15 + 0.29 * row, wing - 0.2)
 			Scn.box(pos, Vector3(0.58, 0.28, 0.4), _jit(Color(0.5, 0.45, 0.32).lerp(Color(0.38, 0.4, 0.3), rng.randf()), rng, 0.08), yaw + rng.randf_range(-0.1, 0.1))
-	Scn.solid(c + basis * Vector3(0, 0.46, 0), Vector3(3.5, 0.92, 0.75), yaw)
+	# the stack narrows: two rows of six bags, one of five on top (the wings bend a little back)
+	Scn.solid(c + basis * Vector3(0, 0.29, -0.15), Vector3(3.5, 0.58, 0.72), yaw)
+	Scn.solid(c + basis * Vector3(0, 0.73, -0.2), Vector3(2.9, 0.3, 0.55), yaw)
 	Scn.block(Scn.footprint(Vector2(c.x, c.z), Vector2(1.75, 0.45), yaw), 0.3)
 
 
@@ -628,14 +629,13 @@ static func _barricade(c: Vector3, yaw: float, rng: RandomNumberGenerator) -> vo
 	for i in 4:
 		var off := -1.6 + float(i) * 1.05
 		var pos := c + basis * Vector3(off, 0.45, rng.randf_range(-0.2, 0.2))
-		Scn.box(pos, Vector3(0.9, 0.9, 0.9), _jit(wood.lerp(Color(0.5, 0.42, 0.3), rng.randf()), rng, 0.12), yaw + rng.randf_range(-0.2, 0.2))
-	Scn.box(c + basis * Vector3(-1.1, 1.3, 0), Vector3(0.85, 0.8, 0.85), _jit(wood, rng, 0.15), yaw + 0.3)
-	Scn.box(c + basis * Vector3(0.3, 0.45, 0.45), Vector3(1.9, 0.5, 0.8), Color(0.3, 0.36, 0.48), yaw)                 # sofa seat
-	Scn.box(c + basis * Vector3(0.3, 0.85, 0.75), Vector3(1.9, 0.5, 0.2), Color(0.3, 0.36, 0.48), yaw)                # sofa back
-	Scn.box(c + basis * Vector3(1.55, 0.95, -0.15), Vector3(0.55, 1.9, 0.9), Color(0.55, 0.5, 0.42), yaw + 0.08)       # wardrobe
-	Scn.box(c + basis * Vector3(-0.2, 1.05, -0.4), Vector3(1.0, 2.0, 0.05), Color(0.8, 0.78, 0.7), yaw, Basis(Vector3.FORWARD, 0.0) * Basis(Vector3(1, 0, 0), -0.32))   # door
-	Scn.box(c + basis * Vector3(-1.9, 0.3, 0.2), Vector3(0.9, 0.6, 1.4), Color(0.4, 0.28, 0.18), yaw + 0.5)           # table on its side
-	Scn.solid(c + basis * Vector3(0, 0.9, 0), Vector3(4.4, 1.8, 1.4), yaw)
+		Scn.prop(pos, Vector3(0.9, 0.9, 0.9), _jit(wood.lerp(Color(0.5, 0.42, 0.3), rng.randf()), rng, 0.12), yaw + rng.randf_range(-0.2, 0.2))
+	Scn.prop(c + basis * Vector3(-1.1, 1.3, 0), Vector3(0.85, 0.8, 0.85), _jit(wood, rng, 0.15), yaw + 0.3)
+	Scn.prop(c + basis * Vector3(0.3, 0.45, 0.45), Vector3(1.9, 0.5, 0.8), Color(0.3, 0.36, 0.48), yaw)                 # sofa seat
+	Scn.prop(c + basis * Vector3(0.3, 0.85, 0.75), Vector3(1.9, 0.5, 0.2), Color(0.3, 0.36, 0.48), yaw)                # sofa back
+	Scn.prop(c + basis * Vector3(1.55, 0.95, -0.15), Vector3(0.55, 1.9, 0.9), Color(0.55, 0.5, 0.42), yaw + 0.08)       # wardrobe
+	Scn.box(c + basis * Vector3(-0.2, 1.05, -0.4), Vector3(1.0, 2.0, 0.05), Color(0.8, 0.78, 0.7), yaw, Basis(Vector3.FORWARD, 0.0) * Basis(Vector3(1, 0, 0), -0.32))   # door (a thin leaning sheet: the crates behind it hold the line)
+	Scn.prop(c + basis * Vector3(-1.9, 0.3, 0.2), Vector3(0.9, 0.6, 1.4), Color(0.4, 0.28, 0.18), yaw + 0.5)           # table on its side
 	Scn.block(Scn.footprint(Vector2(c.x, c.z), Vector2(2.2, 0.8), yaw), 0.3)
 
 
@@ -700,7 +700,9 @@ static func rubble(c: Vector3, yaw: float, rng: RandomNumberGenerator, k: float)
 		Scn.box(c + basis * off + Vector3(0, 0.35 * k + sz.y * 0.3, 0), sz, col, yaw + rng.randf() * TAU, rot)
 	# a bent rebar sticking out
 	Scn.between("cyl", c + Vector3(0.3, 0.5, 0.2), c + Vector3(0.9, 1.5, -0.3) * k, 0.05, Color(0.3, 0.2, 0.15))
-	Scn.solid(c + Vector3(0, 0.45 * k, 0), Vector3(3.2 * k, 0.9 * k, 2.5 * k), yaw)
+	# a heap: the slab it lies on, and a narrower, higher core of big pieces (the loose rim of small stones is walked through)
+	Scn.solid(c + Vector3(0, 0.2 * k, 0), Vector3(3.2 * k, 0.4 * k, 2.4 * k), yaw)
+	Scn.solid(c + Vector3(0, 0.6 * k, 0), Vector3(2.2 * k, 0.8 * k, 1.6 * k), yaw)
 	Scn.block(Scn.footprint(Vector2(c.x, c.z), Vector2(1.6, 1.25) * k, yaw), 0.3)
 
 

@@ -69,6 +69,12 @@ static func solid_xf(xf: Transform3D, size: Vector3) -> void:
 	colliders.append({"xf": xf, "size": size})
 
 
+## A visible box that is also solid, with exactly the same transform (the collider is as precise as the mesh).
+static func prop(c: Vector3, size: Vector3, color: Color, yaw: float = 0.0, extra: Basis = Basis.IDENTITY) -> void:
+	box(c, size, color, yaw, extra)
+	solid(c, size, yaw, extra)
+
+
 static func cyl_solid(base: Vector3, r: float, h: float) -> void:
 	cyl_colliders.append({"pos": base, "r": r, "h": h})
 

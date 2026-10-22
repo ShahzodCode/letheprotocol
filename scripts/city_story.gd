@@ -84,7 +84,7 @@ static func _tram(rng: RandomNumberGenerator) -> void:
 		Scn.box(c + Vector3(-TRAM_LEN * 0.5 - 0.02, TRAM_H * 0.5, 0), Vector3(0.05, TRAM_H * 0.8, TRAM_W * 0.8), dark)   # cab glass
 		Scn.box(c + Vector3(TRAM_LEN * 0.5 + 0.02, TRAM_H * 0.5, 0), Vector3(0.05, TRAM_H * 0.8, TRAM_W * 0.8), dark)
 		for bx in [-5.2, 5.2]:                                                                              # the bogies stick out sideways
-			Scn.box(c + Vector3(bx, TRAM_H * 0.5, TRAM_W * 0.5 + 0.35), Vector3(2.6, 1.0, 0.6), dark)
+			Scn.prop(c + Vector3(bx, TRAM_H * 0.5, TRAM_W * 0.5 + 0.35), Vector3(2.6, 1.0, 0.6), dark)
 			Scn.between("cyl", c + Vector3(bx - 1.0, TRAM_H * 0.5, TRAM_W * 0.5 + 0.6), c + Vector3(bx - 1.0, TRAM_H * 0.5 + 0.1, TRAM_W * 0.5 + 0.9), 0.7, Color(0.18, 0.18, 0.2))
 			Scn.between("cyl", c + Vector3(bx + 1.0, TRAM_H * 0.5, TRAM_W * 0.5 + 0.6), c + Vector3(bx + 1.0, TRAM_H * 0.5 - 0.1, TRAM_W * 0.5 + 0.9), 0.7, Color(0.18, 0.18, 0.2))
 		# the pantograph snapped off and lies in the road with the live wire; sparks at its end
@@ -133,7 +133,7 @@ static func _stall(c: Vector3, yaw: float, rng: RandomNumberGenerator) -> void:
 	var b := Basis(Vector3.UP, yaw)
 	var wood := Color(0.45, 0.32, 0.2)
 	var stripe := Color(0.62, 0.14, 0.1) if rng.randf() < 0.5 else Color(0.18, 0.4, 0.22)
-	Scn.box(c + b * Vector3(0, 0.45, 0), Vector3(2.0, 0.9, 0.8), wood, yaw, Basis(Vector3(0, 0, 1), 1.45))                 # counter on its side
+	Scn.prop(c + b * Vector3(0, 0.45, 0), Vector3(2.0, 0.9, 0.8), wood, yaw, Basis(Vector3(0, 0, 1), 1.45))                 # counter on its side (the slumped awning is cloth: no collider)
 	Scn.box(c + b * Vector3(0.1, 0.5, 0.6), Vector3(2.4, 0.05, 1.5), stripe, yaw, Basis(Vector3(1, 0, 0), 0.55))           # awning slumped over it
 	Scn.box(c + b * Vector3(0.1, 0.25, -0.5), Vector3(2.4, 0.05, 0.9), Color(0.85, 0.82, 0.74), yaw, Basis(Vector3(1, 0, 0), -0.25))
 	Scn.between("cyl", c + b * Vector3(-1.1, 0.05, -0.9), c + b * Vector3(-0.2, 0.9, 0.6), 0.05, Color(0.3, 0.3, 0.32))      # a bent pole
@@ -144,8 +144,7 @@ static func _stall(c: Vector3, yaw: float, rng: RandomNumberGenerator) -> void:
 		Scn.box(c + b * off + Vector3(0, sz * 0.5, 0), Vector3(sz, sz, sz), goods[rng.randi() % goods.size()], rng.randf() * TAU)
 	for i in 3:
 		var off2 := Vector3(rng.randf_range(-1.8, 1.8), 0.0, rng.randf_range(-1.4, 1.4))
-		Scn.box(c + b * off2 + Vector3(0, 0.15, 0), Vector3(0.6, 0.3, 0.45), wood.lightened(0.1), yaw + rng.randf_range(-0.8, 0.8))   # spilled crates
-	Scn.solid(c + b * Vector3(0, 0.4, 0), Vector3(2.4, 0.8, 1.4), yaw)
+		Scn.prop(c + b * off2 + Vector3(0, 0.15, 0), Vector3(0.6, 0.3, 0.45), wood.lightened(0.1), yaw + rng.randf_range(-0.8, 0.8))   # spilled crates
 	Scn.block(Scn.footprint(Vector2(c.x, c.z), Vector2(1.2, 0.7), yaw), 0.3)
 
 

@@ -694,7 +694,7 @@ static func _passage(p: Dictionary, rng: RandomNumberGenerator) -> void:
 				var q4 := c + span_dir * rng.randf_range(-w * 0.4, w * 0.4)
 				Scn.between("cyl", Vector3(q4.x, bottom + 0.2, q4.z) , Vector3(q4.x + rng.randf_range(-0.3, 0.3), bottom - 0.5, q4.z + rng.randf_range(-0.3, 0.3)), 0.05, Color(0.3, 0.2, 0.15))
 			# rubble heaped at one end
-			Scn.box(c + Vector3(0, 0.3, 0) + (Vector3(1, 0, 0) if along_x else Vector3(0, 0, 1)) * 2.4, Vector3(1.4, 0.6, w * 0.8) if along_x else Vector3(w * 0.8, 0.6, 1.4), Color(0.4, 0.39, 0.37), rng.randf() * 0.4)
+			Scn.prop(c + Vector3(0, 0.3, 0) + (Vector3(1, 0, 0) if along_x else Vector3(0, 0, 1)) * 2.4, Vector3(1.4, 0.6, w * 0.8) if along_x else Vector3(w * 0.8, 0.6, 1.4), Color(0.4, 0.39, 0.37), rng.randf() * 0.4)
 	# enemies cannot path through it
 	Scn.block(Rect2((p["rect"] as Rect2).position - Vector2(0.1, 0.1), (p["rect"] as Rect2).size + Vector2(0.2, 0.2)), 0.35)
 

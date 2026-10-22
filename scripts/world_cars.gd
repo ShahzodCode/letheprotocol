@@ -27,6 +27,7 @@ static func build(world: World) -> void:
 		var wheels := not burnt or seed_k % 2 == 0
 		var drop := 0.0 if wheels else wr * 0.8
 		var parts: Array = []       # [local centre, size, colour, glows, local basis]
+		var shapes: Array = []      # the solid pieces, [local centre, size, local basis]: a box for body, cabin / cab, cargo, each open door
 		var top := 0.0
 		var cab_squash := 1.0 - crush * 0.6
 		match String(c["type"]):
@@ -39,6 +40,7 @@ static func build(world: World) -> void:
 				if c["two_tone"] and not burnt:
 					parts.append([Vector3(0, wr + h * 0.9, 0), Vector3(sz.x + 0.01, h * 0.2, sz.z + 0.01), accent, false, Basis.IDENTITY])
 				top = wr + h
+				shapes.append([Vector3(0, (wr + h - drop) * 0.5, 0), Vector3(sz.x, wr + h - drop, sz.z), Basis.IDENTITY])
 			"truck":
 				var h2: float = sz.y - wr
 				var cab_l := sz.z * 0.26
@@ -50,6 +52,9 @@ static func build(world: World) -> void:
 					cargo = paint.lightened(0.05)
 				parts.append([Vector3(0, wr + h2 * 0.5, sz.z * 0.5 - sz.z * 0.36), Vector3(sz.x, h2, sz.z * 0.72), cargo, false, Basis.IDENTITY])
 				top = wr + h2
+				var cab_top := wr + h2 * 0.7 - drop
+				shapes.append([Vector3(0, cab_top * 0.5, -sz.z * 0.5 + cab_l * 0.5), Vector3(sz.x, cab_top, cab_l), Basis.IDENTITY])
+				shapes.append([Vector3(0, (top - drop) * 0.5, sz.z * 0.14), Vector3(sz.x, top - drop, sz.z * 0.72), Basis.IDENTITY])
 			_:
 				var bh := (sz.y - wr) * 0.5
 				var ch := (sz.y - wr) * 0.5 * cab_squash
@@ -60,6 +65,8 @@ static func build(world: World) -> void:
 				var roof_tilt := Basis(Vector3(0, 0, 1), crush * 0.12 * (1.0 if seed_k % 2 == 0 else -1.0)) * Basis(Vector3(1, 0, 0), crush * 0.1)
 				parts.append([Vector3(0, wr + bh + ch, sz.z * 0.04), Vector3(sz.x * 0.94, 0.07, sz.z * cab_len + 0.04), roof, false, roof_tilt])          # roof
 				top = wr + bh + ch + 0.04
+				shapes.append([Vector3(0, (wr + bh - drop) * 0.5, 0), Vector3(sz.x, wr + bh - drop, sz.z), Basis.IDENTITY])              # lower body, down to the ground
+				shapes.append([Vector3(0, wr + bh - drop + (ch + 0.04) * 0.5, sz.z * 0.04), Vector3(sz.x * 0.94, ch + 0.04, sz.z * cab_len + 0.04), Basis.IDENTITY])   # the cabin is narrower and shorter
 				if crush > 0.0:
 					parts.append([Vector3(0, wr + bh + 0.04, -sz.z * 0.3), Vector3(sz.x * 0.9, 0.08, sz.z * 0.28), paint.darkened(0.3), false, Basis(Vector3(1, 0, 0), 0.25)])   # crumpled bonnet
 		if c["stripe"] and c["type"] != "bus" and not burnt:
@@ -71,6 +78,7 @@ static func build(world: World) -> void:
 				var hinge := Vector3(sx * sz.x * 0.5, wr + dh * 0.55, -sz.z * 0.08)
 				var db := Basis(Vector3.UP, ang)
 				parts.append([hinge + db * Vector3(0.0, 0.0, 0.5), Vector3(0.06, dh, 1.0), paint, false, db])
+				shapes.append([hinge + db * Vector3(0.0, 0.0, 0.5) - Vector3(0, drop, 0), Vector3(0.06, dh, 1.0), db])
 		if wheels:
 			var axles: Array = [-0.32, 0.32]
 			if c["type"] == "truck" or c["type"] == "bus":
@@ -90,13 +98,13 @@ static func build(world: World) -> void:
 				lc.y -= drop
 			var xf := Transform3D(basis * (pt[4] as Basis) * Basis.from_scale(pt[1]), origin + basis * lc)
 			(glow if pt[3] else lit).append([xf, pt[2]])
-		var cs := CollisionShape3D.new()
-		var shape := BoxShape3D.new()
-		var coll_h := sz.y - drop - (sz.y - wr) * 0.5 * crush * 0.6
-		shape.size = Vector3(sz.x, coll_h, sz.z)
-		cs.shape = shape
-		cs.transform = Transform3D(basis, origin + basis * Vector3(0, coll_h * 0.5, 0))
-		body.add_child(cs)
+		for sh in shapes:
+			var cs := CollisionShape3D.new()
+			var shape := BoxShape3D.new()
+			shape.size = sh[1]
+			cs.shape = shape
+			cs.transform = Transform3D(basis * (sh[2] as Basis), origin + basis * (sh[0] as Vector3))
+			body.add_child(cs)
 	var box := BoxMesh.new()
 	box.size = Vector3.ONE
 	var lit_mat := world._flat_mat(Color.WHITE, true)

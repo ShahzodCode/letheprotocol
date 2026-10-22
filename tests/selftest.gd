@@ -1030,6 +1030,7 @@ func run(m) -> void:
 	await building_tests()
 	await climb_tests()
 	await passage_tests()
+	await collider_tests()
 	await perf_tool_tests()
 	await squad_tests()
 	await invasion_tests()
@@ -2988,6 +2989,74 @@ func _bridge_kinds() -> int:
 	for br in City.bridges:
 		k[br["kind"]] = true
 	return k.size()
+
+
+## Colliders follow the shapes: a car's hood is lower than its roof, a truck's cab lower than its cargo, a tram's bogie is solid,
+## a jersey barrier is narrower on top than at its foot, and a sandbag stack narrows towards the top.
+func collider_tests() -> void:
+	print("--- precise colliders ---")
+	await park_all()
+	await frames(2)
+	var space := player.get_world_3d().direct_space_state
+	var down := func(x: float, z: float) -> float:
+		var q := PhysicsRayQueryParameters3D.create(Vector3(x, 12.0, z), Vector3(x, -1.0, z), Game.L_WORLD)
+		var hit := space.intersect_ray(q)
+		return float(hit["position"].y) if not hit.is_empty() else -9.0
+	var cars_ok := 0
+	var cars_tested := 0
+	for c in City.cars:
+		if cars_tested >= 6:
+			break
+		if String(c["type"]) not in ["hatch", "sedan"] or String(c.get("dmg", "")) != "" or absf(float(c.get("roll", 0.0))) > 0.01:
+			continue
+		var sz: Vector3 = c["size"]
+		var b: Basis = c["basis"]
+		var o: Vector3 = c["origin"]
+		var roof := o + b * Vector3(0, 0, sz.z * 0.04)
+		var hood := o + b * Vector3(0, 0, -sz.z * 0.46)
+		var rh: float = down.call(roof.x, roof.z)
+		var hh: float = down.call(hood.x, hood.z)
+		cars_tested += 1
+		if rh > hh + 0.25 and hh > 0.3:
+			cars_ok += 1
+		else:
+			print("   car ", c["type"], " at ", o, " roof ", snappedf(rh, 0.01), " hood ", snappedf(hh, 0.01))
+	check("a parked car's cabin is higher than its bonnet", cars_tested >= 3 and cars_ok == cars_tested, "%d of %d" % [cars_ok, cars_tested])
+	if not CityStory.tram.is_empty():
+		var tc: Vector3 = CityStory.tram["pos"]
+		var bog := tc + Vector3(-5.2, CityStory.TRAM_H * 0.5, CityStory.TRAM_W * 0.5 + 0.35)
+		var q2 := PhysicsRayQueryParameters3D.create(bog + Vector3(0, 0, 3.0), bog + Vector3(0, 0, -0.1), Game.L_WORLD)
+		var h2 := space.intersect_ray(q2)
+		check("the tram's bogie sticking out sideways is solid, not just the body", not h2.is_empty() and absf(float(h2["position"].z) - (bog.z + 0.3)) < 0.15, str(h2.get("position", "none")))
+	var jersey := 0
+	var jersey_ok := 0
+	for ob in CityWar.war_obstacles:
+		if String(ob["kind"]) != "jersey" or jersey >= 4:
+			continue
+		jersey += 1
+		var jp: Vector3 = ob["pos"]
+		var jy: float = ob["yaw"]
+		var side := Basis(Vector3.UP, jy) * Vector3(0, 0, 1)
+		# a horizontal ray at 0.7 m from the side meets the narrow body (0.18 m from the middle), one at 0.15 m the wide foot (0.3 m)
+		var hi := space.intersect_ray(PhysicsRayQueryParameters3D.create(jp + Vector3(0, 0.7, 0) + side * 1.0, jp + Vector3(0, 0.7, 0), Game.L_WORLD))
+		var lo := space.intersect_ray(PhysicsRayQueryParameters3D.create(jp + Vector3(0, 0.15, 0) + side * 1.0, jp + Vector3(0, 0.15, 0), Game.L_WORLD))
+		if not hi.is_empty() and not lo.is_empty() and ((lo["position"] - jp) as Vector3).dot(side) > ((hi["position"] - jp) as Vector3).dot(side) + 0.08:
+			jersey_ok += 1
+	check("a jersey barrier is narrower on top than at its foot", jersey >= 1 and jersey_ok == jersey, "%d of %d" % [jersey_ok, jersey])
+	var sandbags := 0
+	var sand_ok := 0
+	for ob in CityWar.war_obstacles:
+		if String(ob["kind"]) != "sandbags" or sandbags >= 4:
+			continue
+		sandbags += 1
+		var sp: Vector3 = ob["pos"]
+		var sy: float = ob["yaw"]
+		var along := Basis(Vector3.UP, sy) * Vector3(1, 0, 0)
+		var low := space.intersect_ray(PhysicsRayQueryParameters3D.create(sp + Vector3(0, 0.3, 0) + along * 3.0, sp + Vector3(0, 0.3, 0), Game.L_WORLD))
+		var top := space.intersect_ray(PhysicsRayQueryParameters3D.create(sp + Vector3(0, 0.73, 0) + along * 3.0, sp + Vector3(0, 0.73, 0), Game.L_WORLD))
+		if not low.is_empty() and not top.is_empty() and ((low["position"] - sp) as Vector3).dot(along) > ((top["position"] - sp) as Vector3).dot(along) + 0.25:
+			sand_ok += 1
+	check("a sandbag stack narrows towards the top", sandbags >= 2 and sand_ok >= sandbags - 1, "%d of %d" % [sand_ok, sandbags])
 
 
 func passage_tests() -> void:
