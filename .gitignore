@@ -17,5 +17,3 @@ x
 *.key
 *.pem
 
-# third-party models (licences unchecked, see CREDITS.md)
-models/
