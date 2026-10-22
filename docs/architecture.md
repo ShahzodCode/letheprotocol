@@ -45,7 +45,7 @@ scripts/
   sfx.gd                 all sounds synthesised in code (no audio files), cached AudioStreamWAV
   ai_budget.gd           AiBudget: per-tick budget of AI physics rays (12) and A* requests (1), called by Main each tick (added since the old layout list)
   prof.gd                Prof: section timer for the perf scripts, off in the game (added since the old layout list)
-models/                  pistol.glb (the M9 viewmodel, in use), rifle.glb (the old M4, copied from the `game` repo, no longer used) + their .webp textures
+models/                  pistol.glb (the M9 viewmodel, in use) + its .webp textures (the old rifle.glb was deleted: unused)
 models/chars/           people.fbx (11 outfits, 24 clips), marksman.glb, agile.glb, soldier.glb (rigged soldiers), hedgehog.glb (anti-tank barricade); see CREDITS.md
 tests/selftest.gd        about 570 scripted checks in 15 sections (physics, shooting, AI, city, story); tests/screenshots.gd renders views for visual review; the other tool scripts are listed in docs/commands-and-testing.md
 tests/perf_*.gd|ps1|json perf probe, ablate, baseline, merge, battle, renderers (see docs/commands-and-testing.md)

@@ -23,11 +23,20 @@ outfits and props removed (`people`), clips renamed and looped, procedural pose 
 
 | File | What it is | Author / source | Licence |
 |---|---|---|---|
-| `pistol.glb` (+ 8 `pistol_*.webp` textures) | Pistol viewmodel / pickup | **TO LOOK UP** (file says only `glTF-Transform v4.5.1`, an optimiser, not the author) | **TO LOOK UP** |
-| `rifle.glb` (+ 3 `rifle_*.webp` textures) | Rifle (material names `Material`, `Material.002`) | **TO LOOK UP** (same: only `glTF-Transform v4.5.1`) | **TO LOOK UP** |
+| `pistol.glb` (+ 8 `pistol_*.webp` textures) | Pistol viewmodel / pickup | TastyTony (https://sketchfab.com/TastyTony), per the project owner (the file itself only says `glTF-Transform v4.5.1`, an optimiser) | **TO LOOK UP**: the model page and its licence |
 
-Both arrived in the first project zip (`letheprotocol-claude-magical-clarke-7i3428.zip`, 2026-10-15). The typo
-"rougfness" in the pistol texture names is from the original artist's file and may help when you search for the page.
+`pistol.glb` arrived in the first project zip (`letheprotocol-claude-magical-clarke-7i3428.zip`, 2026-10-15). `rifle.glb` was
+unused and was deleted on 2026-10-23.
+
+## Authors of the character models (profiles confirmed by the project owner)
+
+- `agile.glb` (rifleman, blade): Pipo Game in My Notebook, https://sketchfab.com/pipogamepc18
+- `marksman.glb` (marksman, gunner): SlagPerch 3D, https://sketchfab.com/slagperch3d
+
+## Planned for later (not in the game yet)
+
+- Low-poly gun pack by satendra5286 (https://sketchfab.com/satendra5286): https://sketchfab.com/3d-models/guns-low-poly-e61b238f8c364c5bbdfe4bab0aaa08a3.
+  Licence not checked: read it on that page before importing any of it.
 
 ## What I found and could not find
 
