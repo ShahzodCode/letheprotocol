@@ -11,6 +11,12 @@ const CROSS_MAX := 13
 const MIN_POCKET := 40            # smaller sets of narrow cells are corners and nooks, not pockets
 const EXIT_MERGE := 2             # boundary cells this close (Chebyshev) are one exit
 const SOLDIER_NEAR := 30.0
+const SMALL_BIT := 100            # pockets under this many cells (about 33 m of alley) are corner bits: left out of the 3-exit target
+const STREET_W := 12.0            # the "12 m street" class for the cover audit (11 to 13 m wide)
+const COVER_H := 1.2              # an object this high hides a crouched player
+const COVER_WINDOW := 40.0        # in any 40 m of a 12 m street there is a place out of the line of sight from the far end
+const COVER_JUNCTION := 7.0       # the first / last metres of a street are its junction mouths: no cover is planted there
+const COVER_GAP_MAX := 24.0       # target: the longest stretch of a 12 m street without cover
 
 var nx := 0
 var nz := 0
@@ -41,13 +47,29 @@ func _is_wide(i: int) -> bool:
 	return free[i] == 1 and width[i] >= WIDE_MIN
 
 
+var verbose := true
+var result := {}                 # the numbers of the last analyse(): the selftest checks them (see docs/stealth-layout-plan.md)
+
+
+func _p(a, b = "", c = "", d = "") -> void:
+	if verbose:
+		print(str(a), str(b), str(c), str(d))
+
+
 func run(_m) -> void:
-	await get_tree().physics_frame
-	var args := OS.get_cmdline_user_args()
 	var out_png := "user://stealth_map.png"
-	for a in args:
+	for a in OS.get_cmdline_user_args():
 		if String(a).begins_with("out="):
 			out_png = String(a).substr(4)
+	await analyse(true, out_png)
+	get_tree().quit()
+
+
+## Measures the generated city. `verb` prints the report, `out_png` (if not empty) writes the colour map; returns `result`.
+func analyse(verb: bool, out_png: String = "") -> Dictionary:
+	verbose = verb
+	result = {}
+	await get_tree().physics_frame
 	nx = int(City.OUT_X * 2.0)
 	nz = int(City.OUT_Z * 2.0)
 	ox = -City.OUT_X
@@ -107,6 +129,7 @@ func run(_m) -> void:
 			soldiers.append((e as Node3D).global_position)
 	var exits_of: Dictionary = {}          # pocket id -> Array of {pos, width, soldiers}
 	var links: Dictionary = {}             # "a:b" -> shortest crossing (m)
+	var links_over_centre: Dictionary = {}  # the links whose dash runs over x = 0 or z = 0 (none must: the central avenues are not crossed)
 	var boundary: Dictionary = {}          # pocket id -> Array of cell indices touching a wide cell
 	for i in nx * nz:
 		if pocket[i] < 0 or sizes[pocket[i]] < MIN_POCKET:
@@ -142,6 +165,10 @@ func run(_m) -> void:
 					var key := "%d:%d" % [mini(hit, pocket[i]), maxi(hit, pocket[i])]
 					if not links.has(key) or len < int(links[key]):
 						links[key] = len
+						var wp0 := _pos(i)
+						var wp1 := wp0 + Vector3(d.x, 0.0, d.y) * float(len + 1)
+						if (d.x != 0 and minf(wp0.x, wp1.x) < 0.0 and maxf(wp0.x, wp1.x) > 0.0) or (d.y != 0 and minf(wp0.z, wp1.z) < 0.0 and maxf(wp0.z, wp1.z) > 0.0):
+							links_over_centre[key] = true
 	for pid in boundary:
 		var cells: Array = boundary[pid]
 		var done: Dictionary = {}
@@ -209,10 +236,10 @@ func run(_m) -> void:
 					st2.append(nb2)
 		comp_cells.append(cs)
 	# ---- report
-	print("=== STEALTH AUDIT (seed city, %d walkable cells, %d hand-built-place cells counted as neither) ===" % [free_cells, unpainted])
-	print("passages cut by CityLinks: ", CityLinks.done)
-	print("narrow cells %d (%.0f%%), wide cells %d (%.0f%%), other (%d-%d m) %d" % [narrow_total, 100.0 * narrow_total / free_cells, wide_total, 100.0 * wide_total / free_cells, int(NARROW_MAX), int(WIDE_MIN), free_cells - narrow_total - wide_total])
-	print("pockets (>= %d cells): %d, of %d narrow sets in all" % [MIN_POCKET, big.size(), sizes.size()])
+	_p("=== STEALTH AUDIT (seed city, %d walkable cells, %d hand-built-place cells counted as neither) ===" % [free_cells, unpainted])
+	_p("passages cut by CityLinks: ", CityLinks.done)
+	_p("narrow cells %d (%.0f%%), wide cells %d (%.0f%%), other (%d-%d m) %d" % [narrow_total, 100.0 * narrow_total / free_cells, wide_total, 100.0 * wide_total / free_cells, int(NARROW_MAX), int(WIDE_MIN), free_cells - narrow_total - wide_total])
+	_p("pockets (>= %d cells): %d, of %d narrow sets in all" % [MIN_POCKET, big.size(), sizes.size()])
 	var hist: Dictionary = {}
 	var exit_total := 0
 	var hot_exits := 0
@@ -239,13 +266,40 @@ func run(_m) -> void:
 	var hs := ""
 	for k in keys:
 		hs += "%d exits: %d pockets   " % [k, hist[k]]
-	print("exit count per pocket -> ", hs)
-	print("exits in all: %d; with 2+ soldiers within %d m at spawn: %d (%.0f%%); opening onto 18 m+ avenues/plazas: %d (%.0f%%)" % [exit_total, int(SOLDIER_NEAR), hot_exits, 100.0 * hot_exits / maxf(1.0, exit_total), onto_avenue, 100.0 * onto_avenue / maxf(1.0, exit_total)])
+	_p("exit count per pocket -> ", hs)
+	_p("exits in all: %d; with 2+ soldiers within %d m at spawn: %d (%.0f%%); opening onto 18 m+ avenues/plazas: %d (%.0f%%)" % [exit_total, int(SOLDIER_NEAR), hot_exits, 100.0 * hot_exits / maxf(1.0, exit_total), onto_avenue, 100.0 * onto_avenue / maxf(1.0, exit_total)])
 	var linked_pockets := 0
 	for pid in big:
 		if adj.has(pid):
 			linked_pockets += 1
-	print("pockets with at least one crossing (<= %d m dash) to another pocket: %d of %d; crossing links in all: %d" % [CROSS_MAX, linked_pockets, big.size(), links.size()])
+	# pockets with 3 or more exits; pockets under SMALL_BIT cells are corner bits and nooks and do not count for the target
+	var big_n := 0
+	var big_ok := 0
+	var weak := ""
+	for r5 in rows:
+		if int(r5["cells"]) >= SMALL_BIT:
+			big_n += 1
+			if int(r5["exits"]) >= 3:
+				big_ok += 1
+			else:
+				weak += "#%d(%d cells, %d exits) " % [r5["pid"], r5["cells"], r5["exits"]]
+	var one_exit := 0
+	for r6 in rows:
+		if int(r6["exits"]) <= 1:
+			one_exit += 1
+	result["pockets"] = big.size()
+	result["pockets_sized"] = big_n
+	result["pockets_3exits"] = big_ok
+	result["pockets_3exits_frac"] = float(big_ok) / maxf(1.0, float(big_n))
+	result["pockets_1exit"] = one_exit
+	result["links"] = links.size()
+	_p("pockets of %d+ cells with 3 or more exits: %d of %d (%.0f%%); still short: %s; pockets with a single exit: %d" % [SMALL_BIT, big_ok, big_n, 100.0 * float(big_ok) / maxf(1.0, float(big_n)), weak, one_exit])
+	var over_centre := 0
+	for key2 in links:
+		if links_over_centre.has(key2):
+			over_centre += 1
+	result["links_over_central_avenue"] = over_centre
+	_p("pockets with at least one crossing (<= %d m dash) to another pocket: %d of %d; crossing links in all: %d" % [CROSS_MAX, linked_pockets, big.size(), links.size()])
 	var best_comp := 0
 	for c3 in comp_cells:
 		best_comp = maxi(best_comp, int(c3))
@@ -254,11 +308,11 @@ func run(_m) -> void:
 		pocket_cells += int(sizes[pid])
 	comp_cells.sort()
 	comp_cells.reverse()
-	print("pocket groups joined by crossings: %d; the biggest holds %d of %d pocket cells (%.0f%%); next biggest: %s" % [comp_cells.size(), best_comp, pocket_cells, 100.0 * best_comp / maxf(1.0, pocket_cells), str(comp_cells.slice(1, 6))])
+	_p("pocket groups joined by crossings: %d; the biggest holds %d of %d pocket cells (%.0f%%); next biggest: %s" % [comp_cells.size(), best_comp, pocket_cells, 100.0 * best_comp / maxf(1.0, pocket_cells), str(comp_cells.slice(1, 6))])
 	rows.sort_custom(func(a, b): return a["exits"] < b["exits"] or (a["exits"] == b["exits"] and a["cells"] > b["cells"]))
-	print("--- the 15 worst pockets (fewest exits, then biggest): id, cells, exits, crossings, hot exits, mean width of the street at the exits, centre")
+	_p("--- the 15 worst pockets (fewest exits, then biggest): id, cells, exits, crossings, hot exits, mean width of the street at the exits, centre")
 	for r in rows.slice(0, 15):
-		print("  #%d  %4d cells  exits %d  crossings %d  hot %d  opens on %.0f m  at (%.0f, %.0f)" % [r["pid"], r["cells"], r["exits"], r["links"], r["hot"], r["open_w"], (r["at"] as Vector3).x, (r["at"] as Vector3).z])
+		_p("  #%d  %4d cells  exits %d  crossings %d  hot %d  opens on %.0f m  at (%.0f, %.0f)" % [r["pid"], r["cells"], r["exits"], r["links"], r["hot"], r["open_w"], (r["at"] as Vector3).x, (r["at"] as Vector3).z])
 	# ---- blocks with no back street at all (a solid mass of buildings)
 	var xe: Array = City._intervals(City.AVENUE_X, City.BX)
 	var ze: Array = City._intervals(City.AVENUE_Z, City.BZ)
@@ -276,9 +330,14 @@ func run(_m) -> void:
 			if inside < 30:
 				solid_blocks += 1
 				solid_list += "(%.0f,%.0f) " % [(xe[ix][0] + xe[ix][1]) * 0.5, (ze[iz][0] + ze[iz][1]) * 0.5]
-	print("blocks with no street inside at all: %d of %d  centres: %s" % [solid_blocks, block_total, solid_list])
+	_p("blocks with no street inside at all: %d of %d  centres: %s" % [solid_blocks, block_total, solid_list])
 	# ---- the walk home
 	_route_report(City.INSTITUTE_EXIT, City.HOME_POS)
+	_cover_report()
+	result["reachable"] = City.reachable_fraction(City.START_POS)
+	_p("reachable fraction of the walkable ground: %.4f" % float(result["reachable"]))
+	if out_png == "":
+		return result
 	# ---- the picture
 	var img := Image.create(nx, nz, false, Image.FORMAT_RGB8)
 	img.fill(Color(0.05, 0.05, 0.06))
@@ -308,8 +367,8 @@ func run(_m) -> void:
 		if sc >= 0:
 			img.set_pixel(sc % nx, sc / nx, Color(0, 0, 0))
 	img.save_png(out_png)
-	print("map written to ", ProjectSettings.globalize_path(out_png) if out_png.begins_with("user://") else out_png, "  (pockets coloured, wide streets grey, exits white, exits with 2+ soldiers near red, soldiers black)")
-	get_tree().quit()
+	_p("map written to ", ProjectSettings.globalize_path(out_png) if out_png.begins_with("user://") else out_png, "  (pockets coloured, wide streets grey, exits white, exits with 2+ soldiers near red, soldiers black)")
+	return result
 
 
 func _nbrs(i: int) -> Array[int]:
@@ -386,4 +445,207 @@ func _route_report(a: Vector3, b: Vector3) -> void:
 				run = 0
 				if _is_narrow(ci):
 					narrow += 1
-		print("walk home, %s: %d m, %d m on narrow streets, %d m in the open (%.0f%%), longest open stretch %d m" % [mode, path.size(), narrow, wide, 100.0 * wide / maxf(1.0, path.size()), longest])
+		_p("walk home, %s: %d m, %d m on narrow streets, %d m in the open (%.0f%%), longest open stretch %d m" % [mode, path.size(), narrow, wide, 100.0 * wide / maxf(1.0, path.size()), longest])
+
+
+# ---------------------------------------------------------------- cover on the 12 m streets (docs/stealth-layout-plan.md, suggestion C)
+
+## Oriented boxes that block sight: every scenery collider (Scn), every car, the hedgehog barricades. {inv, half, r (footprint), base, top}.
+func _occluders() -> Array:
+	var out: Array = []
+	for c in Scn.colliders:
+		out.append(_occ_of(c["xf"], c["size"]))
+	for car in City.cars:
+		var sz: Vector3 = car["size"]
+		var b: Basis = car["basis"]
+		out.append(_occ_of(Transform3D(b, (car["origin"] as Vector3) + b * Vector3(0.0, sz.y * 0.5, 0.0)), sz))
+	for ob in City.obstacles:
+		var half: Vector2 = ob["half"]
+		out.append(_occ_of(Transform3D(Basis(Vector3.UP, float(ob["yaw"])), (ob["pos"] as Vector3) + Vector3(0.0, 0.7, 0.0)), Vector3(half.x * 2.0, 1.4, half.y * 2.0)))
+	return out
+
+
+func _occ_of(xf: Transform3D, size: Vector3) -> Dictionary:
+	var lo := Vector3(1.0e9, 1.0e9, 1.0e9)
+	var hi := Vector3(-1.0e9, -1.0e9, -1.0e9)
+	for sx in [-0.5, 0.5]:
+		for sy in [-0.5, 0.5]:
+			for sz in [-0.5, 0.5]:
+				var v := xf * Vector3(size.x * sx, size.y * sy, size.z * sz)
+				lo = lo.min(v)
+				hi = hi.max(v)
+	return {"inv": xf.affine_inverse(), "half": size * 0.5, "r": Rect2(lo.x, lo.z, hi.x - lo.x, hi.z - lo.z), "base": lo.y, "top": hi.y}
+
+
+## Does the segment a-b pass through the oriented box (slab test in the box's own frame)?
+func _hits_box(o: Dictionary, a: Vector3, b: Vector3) -> bool:
+	var inv: Transform3D = o["inv"]
+	var half: Vector3 = o["half"]
+	var p := inv * a
+	var q := inv * b
+	var d := q - p
+	var t0 := 0.0
+	var t1 := 1.0
+	for k in 3:
+		var pk: float = p[k]
+		var dk: float = d[k]
+		var hk: float = half[k]
+		if absf(dk) < 1.0e-6:
+			if absf(pk) > hk:
+				return false
+		else:
+			var ta := (-hk - pk) / dk
+			var tb := (hk - pk) / dk
+			if ta > tb:
+				var tmp := ta
+				ta = tb
+				tb = tmp
+			t0 = maxf(t0, ta)
+			t1 = minf(t1, tb)
+			if t0 > t1:
+				return false
+	return true
+
+
+## The streets the cover pass looks at: 12 m streets (11 to 13 m wide) outside the hand-built places, cut into segments between
+## the wide streets that cross them. [{rect, along_z, segs: [[a, b], ...]}] (a, b = coordinates along the street).
+func _cover_streets() -> Array:
+	var hand: Array = [City.INSTITUTE_BLOCK.grow(12.0), City.HOME_BLOCK.grow(12.0), City.PARK_BLOCK.grow(12.0), City.COURT_BLOCK.grow(12.0)]
+	var out: Array = []
+	for st in City.streets:
+		var r: Rect2 = st["rect"]
+		var w := minf(r.size.x, r.size.y)
+		if absf(w - STREET_W) > 1.0:
+			continue
+		var az := r.size.y > r.size.x
+		var lo := r.position.y if az else r.position.x
+		var hi := r.end.y if az else r.end.x
+		var cuts: Array = []
+		for o in City.streets:
+			var orr: Rect2 = o["rect"]
+			if orr == r or minf(orr.size.x, orr.size.y) < WIDE_MIN:
+				continue
+			if (orr.size.x > orr.size.y) != az:
+				continue                # only streets that run across this one
+			var it := r.intersection(orr)
+			if it.size.x <= 0.0 or it.size.y <= 0.0:
+				continue
+			cuts.append([it.position.y, it.end.y] if az else [it.position.x, it.end.x])
+		for h in hand:
+			var it2 := r.intersection(h as Rect2)
+			if it2.size.x > 0.0 and it2.size.y > 0.0:
+				cuts.append([it2.position.y, it2.end.y] if az else [it2.position.x, it2.end.x])
+		cuts.sort_custom(func(a, b): return a[0] < b[0])
+		var segs: Array = []
+		var cur := lo
+		for c in cuts:
+			if c[0] > cur:
+				segs.append([cur, c[0]])
+			cur = maxf(cur, c[1])
+		if hi > cur:
+			segs.append([cur, hi])
+		out.append({"rect": r, "along_z": az, "segs": segs})
+	return out
+
+
+func _cover_report() -> void:
+	var occs := _occluders()
+	var streets := _cover_streets()
+	var seg_n := 0
+	var longest := 0.0
+	var longest_at := Vector2.ZERO
+	var long_total := 0.0
+	var win_n := 0
+	var win_ok := 0
+	var win_ok_strict := 0
+	var cover_n := 0
+	for s in streets:
+		var r: Rect2 = s["rect"]
+		var az: bool = s["along_z"]
+		var centre := r.get_center()
+		var lat0 := r.position.x if az else r.position.y
+		var near: Array = []                 # occluders in this street (base low enough to stand behind, top high enough to hide a crouched player)
+		for o in occs:
+			if (o["r"] as Rect2).intersects(r.grow(0.5)) and float(o["base"]) < 0.8:
+				near.append(o)
+		for sg in s["segs"]:
+			var a: float = sg[0]
+			var b: float = sg[1]
+			if b - a < 26.0:
+				continue
+			seg_n += 1
+			var spans: Array = []
+			for o in near:
+				if float(o["top"]) < COVER_H:
+					continue
+				var orr: Rect2 = o["r"]
+				var u0 := orr.position.y if az else orr.position.x
+				var u1 := orr.end.y if az else orr.end.x
+				if u1 > a - 1.0 and u0 < b + 1.0:
+					spans.append([maxf(u0, a), minf(u1, b)])
+			spans.sort_custom(func(p, q): return p[0] < q[0])
+			cover_n += spans.size()
+			var gap := 0.0
+			var prev := a
+			var worst_u := a
+			for sp in spans:
+				if sp[0] - prev > gap:
+					gap = sp[0] - prev
+					worst_u = prev
+				prev = maxf(prev, sp[1])
+			if b - prev > gap:
+				gap = b - prev
+				worst_u = prev
+			long_total += gap
+			if gap > longest:
+				longest = gap
+				longest_at = Vector2(centre.x, worst_u) if az else Vector2(worst_u, centre.y)
+			# the line-of-sight windows: a hiding place out of sight of someone at the far end of any 40 m
+			if b - a >= 30.0:
+				var wlen := minf(COVER_WINDOW, b - a)
+				var u := a
+				while u + wlen <= b + 0.01:
+					win_n += 1
+					var ok_centre := false
+					var ok_all := true
+					for vlat in [0.0, -3.0, 3.0]:
+						var ok_v := false
+						var eye := _street_pt(az, centre, u + wlen, vlat, 1.7)
+						for hu in range(2, int(wlen) - 5, 2):
+							for hl in [-4.5, -3.0, -1.5, 0.0, 1.5, 3.0, 4.5]:
+								var tp := _street_pt(az, centre, u + float(hu), float(hl), 1.1)
+								if not City.is_free(Vector3(tp.x, 0.0, tp.z)):
+									continue
+								var seen := true
+								for o in near:
+									if _hits_box(o, eye, tp):
+										seen = false
+										break
+								if not seen:
+									ok_v = true
+									break
+							if ok_v:
+								break
+						if vlat == 0.0:
+							ok_centre = ok_v
+						if not ok_v:
+							ok_all = false
+					if ok_centre:
+						win_ok += 1
+					if ok_all:
+						win_ok_strict += 1
+					u += 4.0
+	result["cover_streets"] = streets.size()
+	result["cover_segments"] = seg_n
+	result["cover_items"] = cover_n
+	result["cover_longest_gap"] = longest
+	result["cover_windows"] = win_n
+	result["cover_windows_ok"] = win_ok
+	result["cover_windows_ok_strict"] = win_ok_strict
+	_p("12 m streets (outside the hand-built places): %d, %d stretches of 26 m or more between wide streets, %d cover objects (%.1f m or higher) on them" % [streets.size(), seg_n, cover_n, COVER_H])
+	_p("longest stretch of a 12 m street without cover: %.1f m (at %.0f, %.0f; target %.0f m); mean longest gap per stretch %.1f m" % [longest, longest_at.x, longest_at.y, COVER_GAP_MAX, long_total / maxf(1.0, float(seg_n))])
+	_p("%d-m windows with a place out of sight of the far end: %d of %d from the middle of the street, %d of %d from either side too" % [int(COVER_WINDOW), win_ok, win_n, win_ok_strict, win_n])
+
+
+func _street_pt(az: bool, centre: Vector2, along: float, lat: float, y: float) -> Vector3:
+	return Vector3(centre.x + lat, y, along) if az else Vector3(along, y, centre.y + lat)

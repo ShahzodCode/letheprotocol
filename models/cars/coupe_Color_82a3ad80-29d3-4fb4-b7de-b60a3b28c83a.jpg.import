@@ -1,0 +1,44 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://dx40cv7p7r8vg"
+path.s3tc="res://.godot/imported/coupe_Color_82a3ad80-29d3-4fb4-b7de-b60a3b28c83a.jpg-b4e32bb1b1a31e4c661c454999532155.s3tc.ctex"
+metadata={
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
+}
+generator_parameters={
+"md5": "14a9dc27abba4fc9a6ec63282dbfd39a"
+}
+
+[deps]
+
+source_file="res://models/cars/coupe_Color_82a3ad80-29d3-4fb4-b7de-b60a3b28c83a.jpg"
+dest_files=["res://.godot/imported/coupe_Color_82a3ad80-29d3-4fb4-b7de-b60a3b28c83a.jpg-b4e32bb1b1a31e4c661c454999532155.s3tc.ctex"]
+
+[params]
+
+compress/mode=2
+compress/high_quality=false
+compress/lossy_quality=0.7
+compress/uastc_level=0
+compress/rdo_quality_loss=0.0
+compress/hdr_compression=1
+compress/normal_map=0
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+roughness/mode=0
+roughness/src_normal=""
+process/channel_remap/red=0
+process/channel_remap/green=1
+process/channel_remap/blue=2
+process/channel_remap/alpha=3
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=0

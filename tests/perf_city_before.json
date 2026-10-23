@@ -1,0 +1,79 @@
+﻿{
+    "tag":  "before",
+    "note":  "median of 3 runs (LETHE_SEED 12345, windowed 1280x720, vsync off), 2026-10-23, before the city pass",
+    "meta":  {
+                 "cpu":  "13th Gen Intel(R) Core(TM) i7-13620H",
+                 "gpu":  "NVIDIA GeForce RTX 4060 Laptop GPU",
+                 "physics_hz":  120,
+                 "plain":  false,
+                 "seed":  "12345"
+             },
+    "static":  {
+                   "bodies":  {
+                                  "area":  456,
+                                  "character":  104,
+                                  "rigid":  0,
+                                  "static":  8
+                              },
+                   "buildings":  292,
+                   "buildings_border":  53,
+                   "cars":  128,
+                   "civilians":  50,
+                   "collision_shapes":  4180,
+                   "enemies":  35,
+                   "mesh_nodes":  743,
+                   "multimesh_instances":  14798,
+                   "multimesh_nodes":  390,
+                   "nav_layer_cells":  3440,
+                   "nav_layers":  3,
+                   "nav_main_cells":  214656,
+                   "nav_main_free":  91557,
+                   "nodes":  8137,
+                   "physics_active_objects":  28,
+                   "props":  44,
+                   "streets":  197,
+                   "trees":  333,
+                   "triangles_multimesh":  275254,
+                   "triangles_scene":  953104
+               },
+    "walk":  {
+                 "draw_calls_max":  915.0,
+                 "draw_calls_median":  768.0,
+                 "frame_ms_max":  167.477,
+                 "frame_ms_mean":  26.1321135892117,
+                 "frame_ms_median":  18.927,
+                 "frame_ms_p95":  65.539,
+                 "frame_ms_p99":  101.419,
+                 "frames":  1928,
+                 "hitch_worst_ms":  167.477,
+                 "hitches":  721,
+                 "metres":  296.5,
+                 "primitives_max":  422106.0,
+                 "primitives_median":  362424.0,
+                 "render_cpu_ms":  4.06599998474121,
+                 "render_gpu_ms":  3.97199988365173
+             },
+    "dense":  {
+                  "draw_calls_max":  916.0,
+                  "draw_calls_median":  322.0,
+                  "frame_ms_max":  128.256,
+                  "frame_ms_mean":  18.210245,
+                  "frame_ms_median":  15.005,
+                  "frame_ms_p95":  45.279,
+                  "frame_ms_p99":  103.204,
+                  "frames":  600,
+                  "hitch_worst_ms":  128.256,
+                  "hitches":  153,
+                  "primitives_max":  410703.0,
+                  "primitives_median":  170506.0,
+                  "render_cpu_ms":  2.44199991226196,
+                  "render_gpu_ms":  2.53099989891052
+              },
+    "ai":  {
+               "ms_per_tick_all":  2.302,
+               "soldiers":  35,
+               "ticks":  240,
+               "ticks_per_second":  120,
+               "us_per_soldier_tick":  65.8
+           }
+}

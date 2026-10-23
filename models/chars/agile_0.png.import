@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dgummc2obcup1"
-path="res://.godot/imported/agile_0.png-3ec3a751ffb1fdcba4466d6ccf7e8443.ctex"
+path.bptc="res://.godot/imported/agile_0.png-3ec3a751ffb1fdcba4466d6ccf7e8443.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "b93fa408079078912c3a6c6ec4bd8be3"
@@ -14,12 +15,12 @@ generator_parameters={
 [deps]
 
 source_file="res://models/chars/agile_0.png"
-dest_files=["res://.godot/imported/agile_0.png-3ec3a751ffb1fdcba4466d6ccf7e8443.ctex"]
+dest_files=["res://.godot/imported/agile_0.png-3ec3a751ffb1fdcba4466d6ccf7e8443.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

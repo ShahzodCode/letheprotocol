@@ -71,6 +71,13 @@ const ALERT_TIME := 0.6
 const GROUP_ALERT_COUNT := 3      # soldiers of one group that must notice the player on their own before the others are told
 const KNOCK_DECAY := 6.0
 const ROAM_RADIUS := 22.0
+## City pass, phase 4: hunters in the back streets give up faster, lone back-street soldiers only shout to their neighbours.
+const NARROW_STREET := 6.5        # a street this wide or less counts as narrow (alleys 3 m, side streets 6 m)
+const NARROW_SIGHT_SCALE := 0.55  # the chase's alley numbers (ChaseFight): a hunter in a narrow street sees less far...
+const NARROW_SEEN_DELAY := 0.7    # ...takes 0.7 s to take in what he sees...
+const LOSE_TIME_NARROW := 2.5     # ...and gives up after this long out of sight (LOSE_TIME elsewhere)
+const SHOUT_RADIUS := 25.0        # a lone soldier's shout reaches only soldiers this close, with a line to them or a short way round
+const SHOUT_PATH_MAX := 35.0
 # ---------- stealth: bodies, suspicion, stamina, breathing ----------
 const INVADER_RUN := 0.75           # the invaders are heavy under Earth's gravity: every kind runs at 75% of the speed in KINDS...
 const INVADER_WALK := 0.9           # ...and walks at 90% (the player sprints at 8 m/s: he can outrun any of them)
@@ -156,6 +163,9 @@ var nav_path := PackedVector3Array()
 var nav_i := 0
 var nav_goal := Vector3.INF
 var repath_t := 0.0
+var _nav_prog := 0.0          # seconds without getting closer to the current waypoint
+var _nav_last_d := 0.0
+var _nav_skips := 0
 var melee_cd := 0.0               # rifle-butt cooldown for shooters
 var lod_acc := 0.0
 var group := -1                   # campfire / roaming group id; -1 = alone (nobody shares anything with him)
@@ -208,6 +218,13 @@ var hold_t := 0.0
 var sight_scale := 1.0            # "The Lander" chase: multiplies his sight (shorter in a 3 m alley, see ChaseFight)
 var seen_delay := 0.0             # seconds the player must stay in view before a hunting soldier counts him as seen
 var _seen_acc := 0.0
+var narrow_tuning := false        # city soldiers (not the story roles): the narrow-street hunter numbers above apply to him
+var in_narrow := false            # he stands in a narrow street (refreshed 4 times a second while he hunts)
+var _narrow_t := 0.0
+var _shouted := false
+var lone_shout := false           # a lone back-street soldier: when he notices the player he shouts to soldiers within SHOUT_RADIUS (no group alarm)
+var patrol: Array = []            # Vector3 waypoints of a loop he walks while calm (empty = wanders round `home`)
+var patrol_i := 0
 var knows_player := false         # story: he knows exactly where the player is (the balcony marksman once the lookout is over), line of sight or not
 var _roof_goal := Vector3.INF     # a hunter's own spot on a ring round a player standing out of reach on a roof (see _approach_goal)
 var _roof_t := 0.0
@@ -616,6 +633,11 @@ func _die(impulse: Vector3, silent: bool = false) -> void:
 
 ## A random walkable spot near home (never inside a building).
 func _pick_wander_point() -> void:
+	if not patrol.is_empty():
+		patrol_i = (patrol_i + 1) % patrol.size()
+		wander_target = patrol[patrol_i]
+		nav_goal = Vector3.INF
+		return
 	var p := City.random_point_near(_rng, home, 6.0, ROAM_RADIUS)
 	wander_target = p if p != Vector3.INF else home
 	nav_goal = Vector3.INF
@@ -634,11 +656,30 @@ func _nav_dir(target: Vector3, delta: float, direct: bool) -> Vector3:
 		nav_i = 0
 		nav_goal = target
 	while nav_i < nav_path.size():
-		var wp := nav_path[nav_i] - global_position
+		var wpv := nav_path[nav_i]
+		var wp := wpv - global_position
 		wp.y = 0.0
-		if wp.length() < 0.9:
+		# doors and stairs need exact waypoints (a rounded corner catches the frame); open ground may cut them
+		var reach := 0.4 if (City.near_link(wpv) or City.near_link(global_position)) else 0.9
+		if wp.length() < reach:
 			nav_i += 1
+			_nav_prog = 0.0
 		else:
+			# no progress towards this waypoint for a second: a door frame or a stair edge has caught him; path again, and skip it the second time
+			var d := wp.length()
+			if d < _nav_last_d - 0.15 * delta:
+				_nav_prog = 0.0
+			else:
+				_nav_prog += delta
+			_nav_last_d = d
+			if _nav_prog > 1.0:
+				_nav_prog = 0.0
+				_nav_skips += 1
+				repath_t = 0.0
+				if _nav_skips % 2 == 0:
+					nav_i += 1
+				if is_on_floor():
+					velocity.y = 0.0
 			return wp.normalized()
 	return to.normalized() if to.length() > 0.6 else Vector3.ZERO
 
@@ -824,6 +865,13 @@ func _physics_process(delta: float) -> void:
 			State.CHASE:
 				# Hunting: run at where he last saw the player (the player himself while in view). Out of sight for
 				# LOSE_TIME and the hunt is off: he goes back to wandering where he stands.
+				if narrow_tuning:
+					_narrow_t -= delta
+					if _narrow_t <= 0.0:
+						_narrow_t = 0.25
+						in_narrow = City.street_width_at(global_position) <= NARROW_STREET
+						sight_scale = NARROW_SIGHT_SCALE if in_narrow else 1.0
+						seen_delay = NARROW_SEEN_DELAY if in_narrow else 0.0
 				seen_now = _sees_player()
 				if seen_delay > 0.0:           # slow to take in what he sees (the alleys of the chase: ChaseFight sets this)
 					_seen_acc = _seen_acc + delta if seen_now else 0.0
@@ -878,7 +926,7 @@ func _physics_process(delta: float) -> void:
 						state = State.ATTACK
 						attack_t = 0.0
 						strike_done = false
-				if unseen_t > LOSE_TIME:
+				if unseen_t > (LOSE_TIME_NARROW if in_narrow else LOSE_TIME):
 					_give_up_hunt()
 			State.ATTACK:
 				_face(to_player, delta, 12.0)
@@ -1003,6 +1051,8 @@ func _separation() -> Vector3:
 ## A lone sniper that spots you from far away just starts shooting by itself.
 func _alert_group() -> void:
 	if group < 0:
+		if lone_shout:
+			_shout()
 		return
 	var aware := 0
 	for e in Game.enemies:
@@ -1217,6 +1267,7 @@ func _finish_suspicion() -> void:
 	home = global_position
 	nav_goal = Vector3.INF
 	noticed_self = false
+	_shouted = false
 	_pick_wander_point()
 	wait_t = _rng.randf_range(0.5, 2.0)
 
@@ -1446,10 +1497,24 @@ func _strike(dist: float) -> void:
 
 ## Hunt called off: wander from where he stands.
 func _give_up_hunt() -> void:
+	if narrow_tuning:
+		in_narrow = false
+		sight_scale = 1.0
+		seen_delay = 0.0
+	if not patrol.is_empty():                     # a patrol picks its loop up again from the nearest corner
+		var best := 0
+		var best_d := INF
+		for pi in patrol.size():
+			var dd := global_position.distance_to(patrol[pi])
+			if dd < best_d:
+				best_d = dd
+				best = pi
+		patrol_i = best - 1
 	state = State.WANDER
 	home = global_position
 	unseen_t = 0.0
 	noticed_self = false
+	_shouted = false
 	burst_left = 0
 	_cancel_charge()
 	nav_goal = Vector3.INF
@@ -1823,3 +1888,32 @@ func _dead_step(delta: float) -> void:
 
 func _exit_tree() -> void:
 	bodies.erase(self)
+
+
+## A lone back-street soldier who noticed the player calls out: only soldiers within SHOUT_RADIUS hear it, and only with a clear line to him
+## or a short way round (SHOUT_PATH_MAX). No group alarm: that still needs three aware soldiers of one group.
+func _shout() -> void:
+	if _shouted:
+		return
+	_shouted = true
+	var space := get_world_3d().direct_space_state
+	for e in Game.enemies:
+		var o := e as Enemy
+		if o == self or not is_instance_valid(o) or (o.state != State.WANDER and o.state != State.SUSPICIOUS):
+			continue
+		if global_position.distance_to(o.global_position) > SHOUT_RADIUS:
+			continue
+		var heard := false
+		var q := PhysicsRayQueryParameters3D.create(global_position + Vector3(0, 1.6, 0), o.global_position + Vector3(0, 1.6, 0), Game.L_WORLD)
+		if space.intersect_ray(q).is_empty():
+			heard = true
+		elif AiBudget.path():
+			var pts := City.path(global_position, o.global_position)
+			var len := 0.0
+			var prev := global_position
+			for pt in pts:
+				len += prev.distance_to(pt)
+				prev = pt
+			heard = not pts.is_empty() and len <= SHOUT_PATH_MAX
+		if heard:
+			o._aggravate(false)

@@ -2781,7 +2781,7 @@ func street_tests() -> void:
 		if top > 0.13 and top < 0.2:
 			stepped = true
 			break
-	check("walking onto the pavement steps over the kerb by itself", stepped)
+	check("the kerb is visual only: walking onto the pavement does not lift the player", not stepped)
 	# fires
 	var n_alley := 0
 	var n_walk := 0

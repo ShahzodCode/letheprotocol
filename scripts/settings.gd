@@ -6,6 +6,8 @@ class_name Settings
 const PATH := "user://settings.cfg"
 const VIEW_FOG := [220.0, 430.0, 650.0]
 const VIEW_FAR := [260.0, 520.0, 750.0]
+const SHADOW_RANGE := [70.0, 25.0, 110.0]          # metres the sun's shadows reach: off / low (only just around the player) / high
+const SHADOW_ATLAS := [2048, 1024, 6144]           # map size per level, about 56 texels a metre at high (it was 8192 for 150 m)
 
 static var fullscreen := true
 static var vsync := true
@@ -61,6 +63,7 @@ static func apply(tree: SceneTree, scene: Node = null) -> void:
 		return
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED)
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)
+	RenderingServer.directional_shadow_atlas_set_size(SHADOW_ATLAS[clampi(shadows, 0, 2)], true)          # sized to the shadow range so the sharpness is the same (about 56 texels a metre) but the map costs less to fill
 	var vp := tree.root
 	vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][aa]
 	vp.scaling_3d_scale = clampf(float(scale_pct) / 100.0, 0.5, 1.0)
@@ -70,8 +73,12 @@ static func apply(tree: SceneTree, scene: Node = null) -> void:
 		var w = scene.world
 		if w != null and w.sun != null:
 			w.sun.shadow_enabled = shadows > 0
-			w.sun.directional_shadow_max_distance = 70.0 if shadows == 1 else 110.0
-			w.sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if shadows == 1 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+			w.sun.directional_shadow_max_distance = SHADOW_RANGE[clampi(shadows, 0, 2)]
+			w.sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL          # one map at one resolution everywhere: the detail no longer changes with where the camera points
+			w.sun.directional_shadow_blend_splits = true          # no visible seam where the near map hands over to the far one
+			w.sun.directional_shadow_pancake_size = 400.0          # tall buildings far towards the sun still cast: a short pancake size culled them, more of them the narrower the view (scoped in)
+			w.sun.directional_shadow_split_1 = 0.35
+			w.sun.directional_shadow_fade_start = 0.85          # shadows fade out softly at the far end instead of ending in a moving edge
 		if w != null and w.env_ref != null:
 			w.env_ref.fog_depth_end = VIEW_FOG[view]
 	var pl = Game.player

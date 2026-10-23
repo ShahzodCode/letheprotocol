@@ -15,10 +15,16 @@ const WIDE_MIN := 9.5
 const AVENUE_MIN := 18.0            # no passage opens onto a street this wide (avenues are where the soldiers are)
 const PASSAGE := 3.0
 const HALF_MIN := 6.0               # each half of a cut lot is at least this deep
+const HALF_MIN_RELAXED := 4.5       # ... in the relaxed sweeps (lots 12 to 15 m across can take a passage too)
 const MIN_EXITS := 3
-const CAPS := {"merge": 30, "cross": 60, "pair": 40, "exit": 24, "split": 12, "loop": 14}
+const CAPS_STRICT := {"merge": 30, "cross": 60, "pair": 40, "exit": 24, "split": 12, "loop": 14}     # the first two sweeps: the caps of the first version, so those cuts come out as before
+const CAPS := {"merge": 30, "cross": 80, "pair": 60, "exit": 40, "split": 12, "loop": 20}            # the relaxed sweeps
+const RELAX_SALT := 18               # picked from 0..19 so that every audit target that can hold does for the default city (docs/stealth-layout-plan.md)
+const SWEEPS := 6                   # the first two sweeps are strict (only joins that merge two groups of pockets); the others also add crossings between pockets of one group and help pockets short of exits
+const LONG_PASSAGE := 56.0          # a pocket short of exits may take a passage this long (else 40 m)
 
 static var done: Dictionary = {}    # type -> count of passages cut in the last run (for the audit / tests)
+static var _long := false             # set per sweep: the relaxed sweeps also take passages up to LONG_PASSAGE long
 
 
 static func width_of(r: Rect2) -> float:
@@ -73,6 +79,7 @@ static func _graph() -> Dictionary:
 				exits[root] = int(exits.get(root, 0)) + 1
 	# pockets lined up across a wide street (a straight dash over it) form one group
 	var group := parent.duplicate()
+	var pairs := {}                      # "a:b" (pocket roots) -> true: pockets that already have a straight dash across a wide street
 	for wi in wide:
 		var wr: Rect2 = City.streets[wi]["rect"]
 		for vertical in [true, false]:
@@ -98,11 +105,19 @@ static func _graph() -> Dictionary:
 					var rb3: Rect2 = City.streets[b]["rect"]
 					var overlap := minf(ra3.end.y, rb3.end.y) - maxf(ra3.position.y, rb3.position.y) if vertical else minf(ra3.end.x, rb3.end.x) - maxf(ra3.position.x, rb3.position.x)
 					if overlap >= 2.0:
+						if width_of(wr) < AVENUE_MIN:
+							pairs[_pair_key(parent, a, b)] = true
 						var ga := _find(group, a)
 						var gb := _find(group, b)
 						if ga != gb:
 							group[ga] = gb
-	return {"parent": parent, "group": group, "exits": exits}
+	return {"parent": parent, "group": group, "exits": exits, "pairs": pairs}
+
+
+static func _pair_key(parent: PackedInt32Array, a: int, b: int) -> String:
+	var ra := _find(parent, a)
+	var rb := _find(parent, b)
+	return "%d:%d" % [mini(ra, rb), maxi(ra, rb)]
 
 
 static func _contact(a: Rect2, b: Rect2) -> bool:
@@ -123,7 +138,11 @@ static func link(seed_value: int) -> int:
 	rng.seed = seed_value + 7777
 	done = {"merge": 0, "cross": 0, "pair": 0, "exit": 0, "split": 0, "loop": 0}
 	var graph := _graph()
-	for sweep in 2:
+	for sweep in SWEEPS:
+		_long = sweep >= 2
+		if sweep == 2:
+			rng = RandomNumberGenerator.new()          # the relaxed sweeps have their own stream, so the strict ones (the first version) come out exactly as before
+			rng.seed = seed_value + 7778 + RELAX_SALT
 		var order: Array = City.lots.duplicate()
 		for i in range(order.size() - 1, 0, -1):          # Fisher-Yates with our own stream
 			var j := rng.randi() % (i + 1)
@@ -133,7 +152,7 @@ static func link(seed_value: int) -> int:
 		for lot in order:
 			if lot.has("dead"):
 				continue                                 # cut earlier in this pass
-			var cut := _best_cut(lot["r"], rng, graph)
+			var cut := _best_cut(lot["r"], rng, graph, sweep >= 2)
 			if cut.is_empty():
 				continue
 			var far_lot: Dictionary = {}
@@ -150,20 +169,20 @@ static func link(seed_value: int) -> int:
 
 
 ## The best passage through lot rectangle `r` ({axis, z0, type}), or {} if none is worth it.
-static func _best_cut(r: Rect2, rng: RandomNumberGenerator, graph: Dictionary) -> Dictionary:
+static func _best_cut(r: Rect2, rng: RandomNumberGenerator, graph: Dictionary, relaxed: bool = false) -> Dictionary:
 	var best := {}
 	var best_score := 0.0
 	for along_x in [true, false]:
 		var ext_len: float = r.size.x if along_x else r.size.y         # how long the passage is
 		var front: float = r.size.y if along_x else r.size.x           # the frontage it is cut across
-		if front < PASSAGE + HALF_MIN * 2.0 or ext_len > 64.0:
+		if front < PASSAGE + _half() * 2.0 or ext_len > 64.0:
 			continue
 		var f0: float = r.position.y if along_x else r.position.x      # frontage start
 		var options: Array = _aligned_options(r, along_x)
 		for k in 3:
-			options.append({"t": rng.randf_range(f0 + HALF_MIN, f0 + front - HALF_MIN - PASSAGE), "aligned": false})
+			options.append({"t": rng.randf_range(f0 + _half(), f0 + front - _half() - PASSAGE), "aligned": false})
 		for o in options:
-			var t: float = clampf(o["t"], f0 + HALF_MIN, f0 + front - HALF_MIN - PASSAGE)
+			var t: float = clampf(o["t"], f0 + _half(), f0 + front - _half() - PASSAGE)
 			var mid := t + PASSAGE * 0.5
 			var p1 := Vector2(r.position.x - 1.0, mid) if along_x else Vector2(mid, r.position.y - 1.0)
 			var p2 := Vector2(r.end.x + 1.0, mid) if along_x else Vector2(mid, r.end.y + 1.0)
@@ -182,35 +201,49 @@ static func _best_cut(r: Rect2, rng: RandomNumberGenerator, graph: Dictionary) -
 			var exits: Dictionary = graph["exits"]
 			var wide_idx := -1
 			var wide_end := 0
-			if n1 and n2:
+			var needy := false                 # an end of the passage belongs to a pocket with fewer than MIN_EXITS exits
+			var pairs: Dictionary = graph["pairs"]
+			if n1 and n2 and relaxed:
+				pass                        # the extra sweeps add crossings and exits only: merging pockets would lower the number of links
+			elif n1 and n2:
+				needy = int(exits.get(_find(parent, s1), 0)) < MIN_EXITS or int(exits.get(_find(parent, s2), 0)) < MIN_EXITS
 				if _find(parent, s1) != _find(parent, s2):
 					type = "merge"
-					score = 3.0
+					score = 3.0 + (0.5 if needy and relaxed else 0.0)
 				elif ext_len <= 30.0:
 					type = "loop"
-					score = 1.0
+					score = 1.0 + (1.5 if needy and relaxed else 0.0)
 			elif n1 != n2 and not aven:
 				var nar := s1 if n1 else s2
 				wide_idx = s2 if n1 else s1
 				wide_end = 1 if n1 else 0
 				var group: PackedInt32Array = graph["group"]
 				var m := _mirror_target(along_x, wide_idx, wide_end, t)
+				needy = int(exits.get(_find(parent, nar), 0)) < MIN_EXITS
 				if bool(o["aligned"]):
-					# an alley already waits on the far side: worth it if it leads to another group
+					# an alley already waits on the far side: worth it if it leads to another group (relaxed sweeps: or to a pocket it has no dash to yet)
 					var far_s := _far_street(along_x, wide_idx, wide_end, mid)
-					if far_s >= 0 and width_of(City.streets[far_s]["rect"]) <= NARROW_MAX and _find(group, far_s) != _find(group, nar):
-						type = "cross"
-						score = 4.0
+					if far_s >= 0 and width_of(City.streets[far_s]["rect"]) <= NARROW_MAX:
+						if _find(group, far_s) != _find(group, nar):
+							type = "cross"
+							score = 4.0
+						elif relaxed and _find(parent, far_s) != _find(parent, nar) and not pairs.has(_pair_key(parent, far_s, nar)):
+							type = "cross"
+							score = 3.6 + (1.0 if needy else 0.0)
 				elif not m.is_empty() and width_of(City.streets[int(m["street"])]["rect"]) <= NARROW_MAX and _find(group, int(m["street"])) != _find(group, nar):
 					type = "pair"
 					score = 3.5
-				elif int(exits.get(_find(parent, nar), 0)) < MIN_EXITS:
+				elif relaxed and not m.is_empty() and width_of(City.streets[int(m["street"])]["rect"]) <= NARROW_MAX and _find(parent, int(m["street"])) != _find(parent, nar) and not pairs.has(_pair_key(parent, int(m["street"]), nar)):
+					type = "pair"
+					score = 3.4 + (1.0 if needy else 0.0)
+				elif needy:
 					type = "exit"
 					score = 2.0
 			elif not n1 and not n2 and r.size.x >= 30.0 and r.size.y >= 30.0:
 				type = "split"
 				score = 1.5
-			if type == "" or int(done[type]) >= int(CAPS[type]) or (ext_len > 40.0 and type != "split"):
+			var max_len := LONG_PASSAGE if relaxed else 40.0
+			if type == "" or int(done[type]) >= int((CAPS if relaxed else CAPS_STRICT)[type]) or (ext_len > max_len and type != "split"):
 				continue
 			if aven and type != "split":
 				continue
@@ -257,7 +290,7 @@ static func _aligned_options(r: Rect2, along_x: bool) -> Array:
 				if absf(edge - far) > 0.6:
 					continue
 				var c := sr.position.y + sr.size.y * 0.5
-				if c > f0 + HALF_MIN + PASSAGE * 0.5 and c < f1 - HALF_MIN - PASSAGE * 0.5:
+				if c > f0 + _half() + PASSAGE * 0.5 and c < f1 - _half() - PASSAGE * 0.5:
 					out.append({"t": c - PASSAGE * 0.5, "aligned": true})
 			else:
 				if sr.size.y <= sr.size.x:
@@ -266,7 +299,7 @@ static func _aligned_options(r: Rect2, along_x: bool) -> Array:
 				if absf(edge2 - far) > 0.6:
 					continue
 				var c2 := sr.position.x + sr.size.x * 0.5
-				if c2 > f0 + HALF_MIN + PASSAGE * 0.5 and c2 < f1 - HALF_MIN - PASSAGE * 0.5:
+				if c2 > f0 + _half() + PASSAGE * 0.5 and c2 < f1 - _half() - PASSAGE * 0.5:
 					out.append({"t": c2 - PASSAGE * 0.5, "aligned": true})
 	return out
 
@@ -302,7 +335,7 @@ static func _mirror_target(along_x: bool, wide_idx: int, wide_end: int, t: float
 		var f0: float = r2.position.y if along_x else r2.position.x
 		var front: float = r2.size.y if along_x else r2.size.x
 		var ext: float = r2.size.x if along_x else r2.size.y
-		if front < PASSAGE + HALF_MIN * 2.0 or ext > 40.0 or t < f0 + HALF_MIN or t + PASSAGE > f0 + front - HALF_MIN:
+		if front < PASSAGE + _half() * 2.0 or ext > (LONG_PASSAGE if _long else 40.0) or t < f0 + _half() or t + PASSAGE > f0 + front - _half():
 			return {}
 		var q := Vector2(r2.position.x - 1.0, mid) if along_x else Vector2(mid, r2.position.y - 1.0)
 		if wide_end == 1:
@@ -336,3 +369,7 @@ static func _apply(lot: Dictionary, cut: Dictionary, rng: RandomNumberGenerator)
 	City._make_lot(rng, ra)
 	City._make_lot(rng, rb)
 	done[cut["type"]] = int(done[cut["type"]]) + 1
+
+
+static func _half() -> float:
+	return HALF_MIN_RELAXED if _long else HALF_MIN

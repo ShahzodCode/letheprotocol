@@ -5,6 +5,9 @@ extends Node3D
 ## The layout itself lives in City (plain data) so the AI can use it for navigation.
 
 const SITE_SEED := 4242
+static var building_mat: ShaderMaterial          # the window shader material of all buildings (Interiors draws its walls with it too)
+const BUILDING_LOD := 120.0        # chunks of buildings farther than this (plus the 80 m chunk size) are drawn as plain tinted boxes: no window shader, no shadows
+const FAR_TINT := Color(0.84, 0.86, 0.9)   # the far boxes are the wall colour times this (the windows average out to a slightly darker, cooler tone)
 
 var sun: DirectionalLight3D
 var env_ref: Environment
@@ -81,6 +84,7 @@ func _environment() -> void:
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 110.0
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_pancake_size = 400.0
 	sun.light_color = Color(1.0, 0.97, 0.9)
 	add_child(sun)
 	if veil_mat != null:
@@ -131,6 +135,9 @@ func _buildings() -> void:
 	var shader := Shader.new()
 	shader.code = BuildingShader.CODE
 	mat.shader = shader
+	building_mat = mat
+	WorldWar.registry.clear()
+	Interiors.shapes.clear()
 	var items: Array = []
 	for b in City.buildings:
 		for bx in b["boxes"]:
@@ -146,6 +153,8 @@ func _buildings() -> void:
 	body.collision_layer = Game.L_WORLD
 	body.collision_mask = 0
 	add_child(body)
+	for sb in City.buildings:          # simple buildings (no way in, no ladder, no damage cut-out, no story role) get ONE collider for the whole footprint
+		sb["one_box"] = not (bool(sb.get("access", false)) or sb.has("tunnel") or sb.has("arch_damage") or sb.has("special") or sb.has("story") or sb.has("institute") or sb.has("home") or sb.has("bridge") or sb.has("nav_rects") or sb.has("slab_holes") or sb.has("no_slab"))
 	var render: Array = []        # [Transform3D, Color, custom data]: drawn in chunks (see WorldWar._mm)
 	for i in items.size():
 		var bx: Dictionary = items[i][0]
@@ -163,15 +172,34 @@ func _buildings() -> void:
 		if not bool(items[i][2]) and b.has("h"):
 			dmg = fposmod(float(i) * 0.6180339, 1.0) * 0.55
 		render.append([Transform3D(Basis.from_scale(size), centre), Color(col.r, col.g, col.b, float(bx.get("style", b["style"]))),
-			Color(dmg, float(b.get("seed", fposmod(float(i) * 0.37, 1.0))), 1.0 if bool(b.get("burning", false)) else 0.0, 0.0)])
-		if bool(items[i][2]):
+			Color(dmg, float(b.get("seed", fposmod(float(i) * 0.37, 1.0))), 1.0 if bool(b.get("burning", false)) else 0.0, 0.0), int(b.get("iid", -1))])
+		if bool(items[i][2]) and not bool(b.get("one_box", false)):
 			var cs := CollisionShape3D.new()
 			var shape := BoxShape3D.new()
 			shape.size = size
 			cs.shape = shape
 			cs.position = centre
 			body.add_child(cs)
-	WorldWar._mm(self, mesh, render, mat, true, 0.0, 80.0)
+	WorldWar._mm(self, mesh, render, mat, true, BUILDING_LOD, 80.0)
+	# the same boxes again for the far chunks: one flat material, no custom data, no shadows
+	var far_items: Array = []
+	for it in render:
+		far_items.append([it[0], it[1]])
+	var far_mat := _flat_mat(FAR_TINT, true)
+	WorldWar._mm(self, mesh, far_items, far_mat, false, 0.0, 80.0, BUILDING_LOD)
+	# one collider per simple building (the footprint up to its top); buildings with a way in, a ladder, a missing corner or a story role keep their boxes
+	for b in City.buildings:
+		if bool(b.get("one_box", false)):
+			var fr: Rect2 = b["rect"]
+			var bh: float = b["h"]
+			var ocs := CollisionShape3D.new()
+			var oshape := BoxShape3D.new()
+			oshape.size = Vector3(fr.size.x, bh, fr.size.y)
+			ocs.shape = oshape
+			ocs.position = Vector3(fr.get_center().x, bh * 0.5, fr.get_center().y)
+			body.add_child(ocs)
+			if b.has("iid"):
+				Interiors.shapes[int(b["iid"])] = ocs
 
 
 ## Footpaths around every building, green squares on empty lots, dashed lane lines down the avenues.

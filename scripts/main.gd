@@ -8,6 +8,14 @@ const RESPAWN_DELAY := 25.0
 const CIVILIAN_COUNT := 50          # living civilians at the start of the story (some are children, each with an adult)
 const CIVILIAN_CHILDREN := 9
 const CIVILIAN_DEAD := 8            # bodies lying near the Institute exit to set the scene (more lie along the way home: CityStory.body_spots)
+## City pass, phase 4: where the roaming soldiers (the ones outside the battle sites) stand. The TOTAL must not rise (the old four groups made about 8).
+const ROAM_TOTAL := 8
+const ROAM_WIDE_SHARE := 0.7        # share of them on avenues and 12 m streets, in groups of ROAM_WIDE_GROUP; the rest are single soldiers (group -1) in the back streets
+const ROAM_WIDE_GROUP := [2, 4]
+const ROAM_LONE_PATROL := 0.6       # of the single soldiers: patrols walking a loop through the back streets...
+const ROAM_LONE_LOOKOUT := 0.3      # ...lookouts standing at an alley mouth (the rest, rarely: a soldier sitting down in a doorway)
+const EXIT_CLEAR := 25.0            # at most one soldier within this distance of any alley mouth at spawn time
+const SPOT_TRIES := 80
 const SITE_SIZE := [3, 4]        # soldiers per battle site (the first site always holds one of every kind: 5)
 ## Who stands where: kind weights by street class. Open avenues get the heavy hitters and snipers, alleys only blades.
 const KIND_WEIGHTS := {
@@ -44,6 +52,7 @@ var story_roles := {}             # uid -> "lane_blade" / "lone_soldier": the tw
 var _story_t := 0.0
 var _ambience_t := 3.0
 var park_fight: ParkFight        # the ten guards at the lander (see ParkFight)
+var interiors: Interiors           # streams the enterable buildings in and out around the player
 var chase: ChaseFight            # the chase, the courtyard and the arm wound (see ChaseFight)
 var _lookout_t := 0.0
 
@@ -56,6 +65,7 @@ func _ready() -> void:
 	world = World.new()
 	add_child(world)
 	world.build()
+	ParkedCars.build(self)
 
 	player = Player.new()
 	player.position = City.START_POS       # inside the entrance recess of the south building, facing the avenue (yaw 0 = north)
@@ -81,6 +91,9 @@ func _ready() -> void:
 	for sid in ["whip", "hum", "far_gun", "far_boom"]:          # synthesised on first use: build them now, not in the middle of a fight
 		Sfx.get_sound(sid)
 	add_child(_crowd)
+	interiors = Interiors.new()
+	add_child(interiors)
+	interiors.setup(self)
 	_spawn_city_enemies()
 	Game.enemy_killed.connect(_on_enemy_killed)
 	Game.objective_changed.connect(_on_objective_changed)
@@ -138,22 +151,11 @@ func _spawn_city_enemies() -> void:
 			var p := City.random_point_near(_rng, centre, 8.0 if k == "marksman" else 1.5, 12.0 if k == "marksman" else 8.0)
 			var member := _spawn_enemy_at(p if p != Vector3.INF else centre, k)
 			member.group = si                  # the soldiers around one campfire share a group (see Enemy._alert_group)
+			member.narrow_tuning = true
 			members.append(member)
 	if City.sites.is_empty():
 		_spawn_enemy_at(City.random_spawn(_rng, player.position, SPAWN_MIN_DIST)["pos"], "soldier")
-	for g in ROAMING_GROUPS:
-		var spot := City.random_spawn(_rng, player.position, SPAWN_MIN_DIST)
-		var cls: String = spot["cls"]
-		var gs: Array = GROUP_SIZE[cls]
-		var n := _rng.randi_range(gs[0], gs[1])
-		for i in n:
-			var p2: Vector3 = spot["pos"]
-			if i > 0:
-				var near := City.random_point_near(_rng, p2, 1.5, 4.5)
-				if near != Vector3.INF:
-					p2 = near
-			var roamer := _spawn_enemy_at(p2, _pick_weighted(KIND_WEIGHTS[cls]))
-			roamer.group = 100 + g
+	_spawn_roamers()
 
 
 func _spawn_enemy_at(p: Vector3, kind: String = "soldier", weapon: String = "") -> Enemy:
@@ -357,7 +359,14 @@ func _populate_civilians() -> void:
 
 
 ## Quiet crowd panic ambience: louder with more panicking civilians near the player, fading out as they leave.
+const CROWD_NOISE := false          # the synthesised crowd loop is band-filtered noise and sounds like a constant ocean hiss: off
+
+
 func _update_crowd(delta: float) -> void:
+	if not CROWD_NOISE:
+		if _crowd.playing:
+			_crowd.stop()
+		return
 	var near := 0
 	for c in Game.civilians:
 		var cv := c as Civilian
@@ -425,6 +434,7 @@ func _process(delta: float) -> void:
 			(s as Site).animate(t)
 	if world.fires != null:
 		world.fires.animate(t)
+		world.fires.burn(player, delta)
 	if Game.dead or Game.won:
 		return
 	Civilian.clock += delta
@@ -525,3 +535,114 @@ func _update_lander_objectives() -> void:
 		"take_grenades":
 			if Game.grenades >= ChaseFight.GRENADES_NEEDED:
 				Mission.complete("take_grenades")
+
+
+# ---------------------------------------------------------------- roaming soldiers (city pass, phase 4)
+
+## About ROAM_WIDE_SHARE of the roamers stand on the avenues and 12 m streets in groups of 2 to 4 (at most one group per 12 m street segment
+## between two avenues); the rest are single soldiers on side streets and alleys: lone patrols walking a loop, lookouts at an alley mouth,
+## and now and then one sitting in a doorway. Spots are chosen so that at most one soldier stands within EXIT_CLEAR of any alley mouth.
+func _spawn_roamers() -> void:
+	var placed: Array = []
+	var used := {}
+	var mouths := City.alley_mouths()
+	var n_wide := roundi(float(ROAM_TOTAL) * ROAM_WIDE_SHARE)
+	var g := 0
+	var left := n_wide
+	while left > 0:
+		var size := mini(_rng.randi_range(ROAM_WIDE_GROUP[0], ROAM_WIDE_GROUP[1]), left)
+		if left - size == 1:                 # never a group of one left over
+			size = left if left <= ROAM_WIDE_GROUP[1] else size - 1
+		var spot := _roam_spot(["avenue", "plaza", "street"], size, placed, mouths, used)
+		var cls: String = spot["cls"]
+		if cls == "street":
+			used[City.segment_key(int(spot["idx"]), spot["pos"])] = true
+		for i in size:
+			var p: Vector3 = spot["pos"]
+			if i > 0:
+				var near := City.random_point_near(_rng, p, 1.5, 4.5)
+				if near != Vector3.INF:
+					p = near
+			var roamer := _spawn_enemy_at(p, _pick_weighted(KIND_WEIGHTS[cls]))
+			roamer.group = 100 + g
+			roamer.narrow_tuning = true
+			placed.append(p)
+		g += 1
+		left -= size
+	for i in ROAM_TOTAL - n_wide:
+		var spot2 := _roam_spot(["walk", "alley"], 1, placed, mouths, used)
+		var cls2: String = spot2["cls"]
+		var pos: Vector3 = spot2["pos"]
+		var roll := _rng.randf()
+		var kind_roll := "lookout" if roll >= ROAM_LONE_PATROL and roll < ROAM_LONE_PATROL + ROAM_LONE_LOOKOUT else ("patrol" if roll < ROAM_LONE_PATROL else "sitter")
+		var face_out := Vector2.ZERO
+		if kind_roll == "lookout":
+			var best := INF
+			for m in mouths:
+				var d := Vector2(pos.x - (m["pos"] as Vector2).x, pos.z - (m["pos"] as Vector2).y).length()
+				if d < best:
+					best = d
+					face_out = m["out"]
+					pos = Vector3((m["pos"] as Vector2).x - face_out.x * 1.5, 0.0, (m["pos"] as Vector2).y - face_out.y * 1.5)
+			if not City.is_free(pos):
+				pos = spot2["pos"]
+				kind_roll = "patrol"
+		var lone := _spawn_enemy_at(pos, _pick_weighted(KIND_WEIGHTS[cls2]))
+		lone.group = -1
+		lone.narrow_tuning = true
+		lone.lone_shout = true
+		placed.append(pos)
+		match kind_roll:
+			"patrol":
+				var loop: Array = [pos]
+				var prev := pos
+				for k in 6:
+					if loop.size() >= 4:
+						break
+					var q := City.random_point_near(_rng, pos, 7.0, 22.0)
+					if q != Vector3.INF and City.street_width_at(q) <= 10.0 and q.distance_to(prev) > 5.0:
+						var way := City.path(prev, q)
+						if not way.is_empty():
+							loop.append(q)
+							prev = q
+				if loop.size() >= 3:
+					lone.patrol = loop
+			"lookout":
+				lone.post = true
+				lone.post_facing = atan2(-face_out.x, -face_out.y)
+				lone.facing = lone.post_facing
+				lone.rig.rotation.y = lone.facing
+			_:
+				lone.sit_down(_rng.randf() * TAU)
+				lone.remove_helmet()
+
+
+## A spot for `size` soldiers on a street of one of `classes`: the one of SPOT_TRIES random candidates that breaks the alley-mouth rule least
+## (a mouth with two soldiers within EXIT_CLEAR) and is not on a 12 m street segment that already has a group.
+func _roam_spot(classes: Array, size: int, placed: Array, mouths: Array, used: Dictionary) -> Dictionary:
+	var best := {}
+	var best_score := 1.0e9
+	for t in SPOT_TRIES:
+		var spot := City.random_spawn(_rng, player.position, SPAWN_MIN_DIST, classes)
+		if String(spot["cls"]) == "street" and used.has(City.segment_key(int(spot["idx"]), spot["pos"])):
+			continue
+		var p: Vector3 = spot["pos"]
+		var score := 0
+		for m in mouths:
+			var mp: Vector2 = m["pos"]
+			if Vector2(p.x - mp.x, p.z - mp.y).length() < EXIT_CLEAR:
+				var n := size
+				for q in placed:
+					if Vector2((q as Vector3).x - mp.x, (q as Vector3).z - mp.y).length() < EXIT_CLEAR:
+						n += 1
+				if n >= 2:
+					score += 1
+		if score < best_score:
+			best_score = score
+			best = spot
+			if score == 0:
+				break
+	if best.is_empty():
+		best = City.random_spawn(_rng, player.position, SPAWN_MIN_DIST, classes)
+	return best
+

@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dcc0scd3885re"
-path="res://.godot/imported/marksman_3.png-0b0ec62c67a4be748f8862d116c1c01f.ctex"
+path.bptc="res://.godot/imported/marksman_3.png-0b0ec62c67a4be748f8862d116c1c01f.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "09392f278ea0afe0f4cc29bb87a778de"
@@ -14,12 +15,12 @@ generator_parameters={
 [deps]
 
 source_file="res://models/chars/marksman_3.png"
-dest_files=["res://.godot/imported/marksman_3.png-0b0ec62c67a4be748f8862d116c1c01f.ctex"]
+dest_files=["res://.godot/imported/marksman_3.png-0b0ec62c67a4be748f8862d116c1c01f.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

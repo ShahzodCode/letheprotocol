@@ -36,12 +36,18 @@ var _look_delta := Vector2.ZERO
 var _sprinting := false
 var climbing := false         # on a ladder (City.ladders): W / S climb, Space jumps off backwards, no gravity, no firing
 var ladder: Dictionary = {}
-var _climb_dist := 0.0        # metres climbed since the last rung sound
+var _climb_flip := 1.0        # +1: W climbs up (facing the wall), -1: W climbs down (facing out over the edge)
+var _climb_cool := 0.0        # no re-attach for a moment after letting go
+const MANTLE_TIME := 0.4
+var _mantle_t := 0.0          # >0: easing over the top of a ladder onto the roof
+var _mantle_from := Vector3.ZERO
+var _mantle_to := Vector3.ZERO
+var _climb_dist := 0.0       # metres climbed since the last rung sound
 
 
 func _ready() -> void:
 	collision_layer = Game.L_PLAYER
-	collision_mask = Game.L_WORLD | Game.L_ENEMY | Game.L_KERB
+	collision_mask = Game.L_WORLD | Game.L_ENEMY          # the 0.15 m pavement kerbs (L_KERB) are visual only: stepping onto them was laggy and shifted the height
 	floor_max_angle = deg_to_rad(50.0)
 	floor_snap_length = 0.45
 	floor_stop_on_slope = true
@@ -202,6 +208,10 @@ func _physics_process(delta: float) -> void:
 	var dir := (global_transform.basis * Vector3(input.x, 0, input.y)).normalized() if input != Vector2.ZERO else Vector3.ZERO
 
 	# ---- ladders: walking into one while pressing forward attaches; the rest of the frame is the climb ----
+	_climb_cool = maxf(0.0, _climb_cool - delta)
+	if _mantle_t > 0.0:
+		_mantle(delta)
+		return
 	if not climbing and Game.has_focus():
 		_try_attach_ladder(input)
 	if climbing:
@@ -347,7 +357,7 @@ static func fall_damage(speed: float) -> float:
 
 ## Pressing forward while standing at the foot of a ladder and facing it (or at its top, facing down over the edge) attaches.
 func _try_attach_ladder(input: Vector2) -> void:
-	if input.y > -0.1 or sliding > 0.0 or crouch_k > 0.6:
+	if input.y > -0.1 or sliding > 0.0 or crouch_k > 0.6 or _climb_cool > 0.0:
 		return
 	var look := Vector2(-sin(yaw), -cos(yaw))
 	var p := Vector2(global_position.x, global_position.z)
@@ -374,6 +384,7 @@ func _try_attach_ladder(input: Vector2) -> void:
 func _attach(l: Dictionary, y: float) -> void:
 	climbing = true
 	ladder = l
+	_climb_flip = 1.0 if y < float(l["top"]) - 0.5 else -1.0
 	velocity = Vector3.ZERO
 	sliding = 0.0
 	crouch_k = 0.0
@@ -384,13 +395,14 @@ func _attach(l: Dictionary, y: float) -> void:
 	_climb_dist = 0.0
 	var base: Vector3 = l["pos"]
 	var n: Vector2 = l["n"]
-	global_position = Vector3(base.x + n.x * 0.5, y, base.z + n.y * 0.5)
+	global_position.y = y                             # the climb eases the player onto the rungs (no snap)
 	Sfx.play(self, "climb", -8.0, randf_range(0.9, 1.1))
 
 
 func _detach(push: Vector3 = Vector3.ZERO) -> void:
 	climbing = false
 	ladder = {}
+	_climb_cool = 0.5
 	velocity = push
 	coyote = 0.0
 	was_on_floor = false
@@ -405,13 +417,18 @@ func _climb(delta: float) -> void:
 	var top: float = l["top"]
 	var up := 0.0
 	if Game.has_focus():
-		up = Input.get_axis("move_back", "move_forward")
+		var face := Vector2(-sin(yaw), -cos(yaw)).dot(-n)       # >0 facing the wall, <0 facing out over the edge
+		if face > 0.25:
+			_climb_flip = 1.0
+		elif face < -0.25:
+			_climb_flip = -1.0
+		up = Input.get_axis("move_back", "move_forward") * _climb_flip
 	if Input.is_action_just_pressed("jump") and Game.has_focus():
 		_detach(Vector3(n.x * 4.5, 3.0, n.y * 4.5))
 		return
 	var p := global_position
 	var line := Vector2(base.x + n.x * 0.5, base.z + n.y * 0.5)
-	var xz := Vector2(p.x, p.z).lerp(line, 1.0 - exp(-14.0 * delta))
+	var xz := Vector2(p.x, p.z).lerp(line, 1.0 - exp(-9.0 * delta))
 	var y := p.y + up * Game.CLIMB_SPEED * delta
 	if up != 0.0:
 		_climb_dist += absf(up) * Game.CLIMB_SPEED * delta
@@ -420,9 +437,9 @@ func _climb(delta: float) -> void:
 			Sfx.play(self, "climb", -10.0, randf_range(0.9, 1.15))
 	if y >= top - 0.02 and up > 0.0:
 		# over the top: step onto the roof 0.9 m in from the edge
-		global_position = Vector3(base.x - n.x * 0.9, top + 0.05, base.z - n.y * 0.9)
-		_detach()
-		Sfx.play(self, "land", -14.0)
+		_mantle_from = global_position
+		_mantle_to = Vector3(base.x - n.x * 0.9, top + 0.05, base.z - n.y * 0.9)
+		_mantle_t = MANTLE_TIME
 		return
 	if y <= base.y + 0.02 and up < 0.0:
 		global_position = Vector3(base.x + n.x * 0.55, base.y + 0.02, base.z + n.y * 0.55)
@@ -477,3 +494,17 @@ func _try_step(motion: Vector3) -> float:
 	var gained := clampf(up.y * 1.2 - col_info.get_travel().length(), 0.0, Game.STEP_HEIGHT)
 	global_position.y += gained
 	return gained
+
+
+## Over the top of a ladder: a short eased hop onto the roof instead of a jump cut.
+func _mantle(delta: float) -> void:
+	_mantle_t = maxf(0.0, _mantle_t - delta)
+	var k := smoothstep(0.0, 1.0, 1.0 - _mantle_t / MANTLE_TIME)
+	var p := _mantle_from.lerp(_mantle_to, k)
+	p.y += sin(k * PI) * 0.25
+	global_position = p
+	velocity = Vector3.ZERO
+	_update_camera(delta, false, Game.STAND_HEIGHT - 0.12)
+	if _mantle_t <= 0.0:
+		_detach()
+		Sfx.play(self, "land", -14.0)

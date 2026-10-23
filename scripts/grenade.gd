@@ -17,6 +17,7 @@ const BOUNCE := 0.4               # share of the normal speed that comes back af
 const FRICTION_KEEP := 0.6        # share of the sideways speed that survives an impact
 const REST_SPEED := 1.2           # slower than this after an impact on a floor = at rest
 const LOUDNESS := 140.0           # Game.gunshot loudness: enemies within loudness * 0.45 (63 m) hear it
+const ORIGIN_LIFT := 0.7          # the blast goes off this far above the resting grenade: low crates and kerbs do not shield (it was 0.15 and a crate hid a man)
 const SCORCH_LIFE := 60.0
 const SCORCH_MAX := 12
 static var scorches: Array = []
@@ -208,7 +209,7 @@ static func damage_at(d: float) -> float:
 static func detonate(scene: Node, pos: Vector3) -> void:
 	Game.mark("explosion")
 	var space := (scene as Node3D).get_world_3d().direct_space_state
-	var origin := pos + Vector3(0, 0.15, 0)
+	var origin := pos + Vector3(0, ORIGIN_LIFT, 0)
 	# enemies: only those with a clear ray from the blast point (walls protect)
 	for e in Game.enemies.duplicate():
 		var en := e as Enemy
@@ -218,7 +219,7 @@ static func detonate(scene: Node, pos: Vector3) -> void:
 		var d := origin.distance_to(target)
 		if d >= RADIUS:
 			continue
-		if not space.intersect_ray(PhysicsRayQueryParameters3D.create(origin, target, Game.L_WORLD)).is_empty():
+		if not _exposed(space, origin, en.global_position, en.body_scale):
 			continue
 		var k := 1.0 - d / RADIUS
 		var flat := Vector3(target.x - origin.x, 0.0, target.z - origin.z)
@@ -231,7 +232,7 @@ static func detonate(scene: Node, pos: Vector3) -> void:
 			continue
 		var ctarget := cv.chest_pos()
 		var cd := origin.distance_to(ctarget)
-		if cd >= RADIUS or not space.intersect_ray(PhysicsRayQueryParameters3D.create(origin, ctarget, Game.L_WORLD)).is_empty():
+		if cd >= RADIUS or not _exposed(space, origin, cv.global_position, 1.0):
 			continue
 		var cflat := Vector3(ctarget.x - origin.x, 0.0, ctarget.z - origin.z).normalized()
 		cv.take_hit(damage_at(cd), "body", cflat * PUSH, ctarget)
@@ -244,7 +245,7 @@ static func detonate(scene: Node, pos: Vector3) -> void:
 		var chest := pl.global_position + Vector3(0, 1.0, 0)
 		var pd := origin.distance_to(chest)
 		pl.add_shake(pos.distance_to(pl.global_position))
-		if pd < RADIUS and space.intersect_ray(PhysicsRayQueryParameters3D.create(origin, chest, Game.L_WORLD)).is_empty():
+		if pd < RADIUS and _exposed(space, origin, pl.global_position, 1.0):
 			pl.take_damage(damage_at(pd), pos)
 	Game.exploded.emit(pos)
 	Game.gunshot.emit(pos, LOUDNESS)
@@ -375,3 +376,13 @@ static func _effects(scene: Node, pos: Vector3) -> void:
 	stw.tween_interval(SCORCH_LIFE - 6.0)
 	stw.tween_property(scm, "albedo_color:a", 0.0, 6.0)
 	stw.tween_callback(sc.queue_free)
+
+
+## Is a person standing at `feet` hit by a blast at `origin`? He is if the blast has a clear line to his feet, chest or head: only a wall
+## or a high cover shields him, not a crate in front of him.
+static func _exposed(space: PhysicsDirectSpaceState3D, origin: Vector3, feet: Vector3, scale: float) -> bool:
+	for h in [0.25, 1.0, 1.6]:
+		var target := feet + Vector3(0.0, h * scale, 0.0)
+		if space.intersect_ray(PhysicsRayQueryParameters3D.create(origin, target, Game.L_WORLD)).is_empty():
+			return true
+	return false

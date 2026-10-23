@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://btwhpdheass15"
-path="res://.godot/imported/hedgehog_3.png-292afc523b54676a454ef1b1235cc110.ctex"
+path.bptc="res://.godot/imported/hedgehog_3.png-292afc523b54676a454ef1b1235cc110.bptc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "5bdf06e69b14b2f309c3683c7b8446d3"
@@ -14,12 +15,12 @@ generator_parameters={
 [deps]
 
 source_file="res://models/chars/hedgehog_3.png"
-dest_files=["res://.godot/imported/hedgehog_3.png-292afc523b54676a454ef1b1235cc110.ctex"]
+dest_files=["res://.godot/imported/hedgehog_3.png-292afc523b54676a454ef1b1235cc110.bptc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

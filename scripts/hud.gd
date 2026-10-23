@@ -294,6 +294,7 @@ class _Icon extends Control:
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	layer = 10
+	_set_font()
 
 
 func setup(p: Player) -> void:
@@ -398,28 +399,28 @@ void fragment() {
 	hp.add_child(arm_icon)
 
 	# ammo box (bottom right)
-	ammo_plate = _plate(root, Vector2(0, 0), Vector2(290, 150))
+	ammo_plate = _plate(root, Vector2(0, 0), Vector2(122, 48))
 	var ap := ammo_plate
-	weapon_name = _label(ap, "M9 PISTOL", 15, Color(0.75, 0.8, 0.8))
-	weapon_name.position = Vector2(12, 6)
-	ammo_big = _label(ap, "15", 52, Color.WHITE)
-	ammo_big.position = Vector2(12, 22)
-	ammo_small = _label(ap, "/ 60", 20, GOLD)
-	ammo_small.position = Vector2(104, 54)
+	weapon_name = _label(ap, "M9 PISTOL", 10, Color(0.75, 0.8, 0.8))
+	weapon_name.position = Vector2(8, 0)
+	ammo_big = _label(ap, "15", 24, Color.WHITE)
+	ammo_big.position = Vector2(8, 10)
+	ammo_small = _label(ap, "/ 60", 11, GOLD)
+	ammo_small.position = Vector2(52, 21)
 	mags = _Mags.new()
-	mags.position = Vector2(12, 86)
+	mags.position = Vector2(12, 56)
 	mags.size = Vector2(266, 50)
 	mags.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ap.add_child(mags)
 	reload_bg = ColorRect.new()
 	reload_bg.color = Color(1, 1, 1, 0.12)
-	reload_bg.size = Vector2(266, 5)
-	reload_bg.position = Vector2(12, 141)
+	reload_bg.size = Vector2(106, 3)
+	reload_bg.position = Vector2(8, 42)
 	reload_bg.visible = false
 	ap.add_child(reload_bg)
 	reload_bar = ColorRect.new()
 	reload_bar.color = ACCENT
-	reload_bar.size = Vector2(0, 5)
+	reload_bar.size = Vector2(0, 3)
 	reload_bg.add_child(reload_bar)
 
 	# weapon slots strip (above the ammo box)
@@ -661,11 +662,11 @@ func _set_paused(p: bool) -> void:
 func _layout() -> void:
 	var vs := get_viewport().get_visible_rect().size
 	health_plate.position = Vector2(16, vs.y - 78)
-	ammo_plate.position = Vector2(vs.x - 306, vs.y - 166)
-	loadout_view.position = Vector2(vs.x - 306, vs.y - 226)
+	ammo_plate.position = Vector2(vs.x - 138, vs.y - 64)
+	loadout_view.position = Vector2(vs.x - 306, vs.y - 120)
 	pickup_plate.position = Vector2(vs.x - 316, vs.y * 0.5 - 75)
 	objective_label.position = Vector2(vs.x * 0.5 - 300, 14)
-	grenade_badge.position = Vector2(vs.x - 306 - 96, vs.y - 166 + 10)
+	grenade_badge.position = Vector2(vs.x - 138 - 96, vs.y - 64 + 4)
 	radio_label.position = Vector2(vs.x * 0.5 - 350, vs.y - 112)
 	toast_label.position = Vector2(vs.x * 0.5 - 300, 48)
 	interact_label.position = Vector2(vs.x * 0.5 - 300, vs.y * 0.62)
@@ -725,7 +726,7 @@ func _process(delta: float) -> void:
 	notice_label.modulate.a = clampf(w.notice_t / 0.6, 0.0, 1.0)
 	if w.reloading:
 		reload_bg.visible = true
-		reload_bar.size.x = 176.0 * clampf(w.reload_t / w.reload_total(), 0.0, 1.0)
+		reload_bar.size.x = 106.0 * clampf(w.reload_t / w.reload_total(), 0.0, 1.0)
 	else:
 		reload_bg.visible = false
 
@@ -875,6 +876,21 @@ func _build_pause_menu() -> void:
 	_menu_check(left, "VSync", "vsync", Settings.vsync, func(on: bool) -> void:
 		Settings.vsync = on
 		_apply_settings())
+	left.add_child(_menu_label("CHEATS", ACCENT, 20))
+	var give := Button.new()
+	give.text = "GIVE  SNIPER + HEAVY GUN  (full ammo)"
+	give.custom_minimum_size = Vector2(0, 38)
+	give.pressed.connect(func() -> void:
+		player.weapons.give_heavy_set()
+		_set_paused(false))
+	left.add_child(give)
+	var clear := Button.new()
+	clear.text = "KILL SOLDIERS WITHIN 50 m"
+	clear.custom_minimum_size = Vector2(0, 38)
+	clear.pressed.connect(func() -> void:
+		_clear_nearby()
+		_set_paused(false))
+	left.add_child(clear)
 	# --- right: the guide
 	var guide := Label.new()
 	guide.text = GUIDE
@@ -968,3 +984,32 @@ func _sync_menu() -> void:
 func _apply_settings() -> void:
 	Settings.apply(get_tree(), get_tree().current_scene)
 	Settings.save()
+
+
+## One clean, narrow sans for everything (the system's Bahnschrift, else Segoe UI); the engine's own font stays the last fallback.
+func _set_font() -> void:
+	var f := SystemFont.new()
+	f.font_names = PackedStringArray(["Bahnschrift", "Segoe UI Semibold", "Segoe UI", "Helvetica Neue", "Arial"])
+	f.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
+	f.hinting = TextServer.HINTING_LIGHT
+	f.oversampling = 2.0
+	ThemeDB.fallback_font = f
+
+
+## Menu button: every living soldier within CLEAR_RADIUS metres of the player is shot dead (the others stay).
+const CLEAR_RADIUS := 50.0
+
+
+func _clear_nearby() -> void:
+	var n := 0
+	for e in Game.enemies.duplicate():
+		var en := e as Enemy
+		if not is_instance_valid(en) or en.state == Enemy.State.DEAD:
+			continue
+		if en.global_position.distance_to(player.global_position) > CLEAR_RADIUS:
+			continue
+		var dir := (en.global_position - player.global_position).normalized()
+		en.take_hit(99999.0, "head", dir * 4.0, en.global_position + Vector3(0.0, 1.5, 0.0))
+		n += 1
+	player.weapons.notice = "%d SOLDIERS DOWN WITHIN %d m" % [n, int(CLEAR_RADIUS)]
+	player.weapons.notice_t = 2.5

@@ -193,3 +193,26 @@ func animate(t: float) -> void:
 		for l in _lights[kind]:
 			if (l as OmniLight3D).visible:
 				(l as OmniLight3D).light_energy = (1.0 + 0.04 * sin(t * 40.0)) if kind == "tunnel" else 1.2 + 0.4 * sin(t * 9.0 + (l as OmniLight3D).position.x) + 0.2 * sin(t * 21.0)
+
+
+## Standing in a flame hurts: BURN_DPS per second in small ticks, only for the fires that have real nodes (the ones near the player).
+const BURN_RADIUS := {"tree": 1.5, "car": 1.7, "build": 2.4}
+const BURN_DPS := 10.0
+const BURN_TICK := 0.5
+var _burn_t := 0.0
+
+
+func burn(player: Player, delta: float) -> void:
+	_burn_t = maxf(0.0, _burn_t - delta)
+	if _burn_t > 0.0 or Game.dead:
+		return
+	var pp := player.global_position
+	for e in entries:
+		if e["node"] == null or not BURN_RADIUS.has(e["kind"]):
+			continue
+		var fp: Vector3 = e["pos"]
+		var r: float = float(BURN_RADIUS[e["kind"]]) * clampf(float(e["s"]), 0.7, 1.5)
+		if Vector2(fp.x - pp.x, fp.z - pp.z).length() < r and pp.y > fp.y - 0.6 and pp.y < fp.y + 2.2:
+			_burn_t = BURN_TICK
+			player.take_damage(BURN_DPS * BURN_TICK, fp)
+			return

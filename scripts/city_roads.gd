@@ -45,6 +45,7 @@ static func build(rng: RandomNumberGenerator) -> void:
 				_stretch(line, w, float(s[0]), float(s[1]), bool(s[2]), bool(s[3]), along_z, rng)
 			_manholes(line, w, cross, lim, along_z, rng)
 	_war_marks(rng)
+	mouths()
 
 
 static func _stretch(line: float, w: float, a: float, b: float, a_j: bool, b_j: bool, along_z: bool, rng: RandomNumberGenerator) -> void:
@@ -171,3 +172,64 @@ static func _cluster(p: Vector2, rng: RandomNumberGenerator, near: float) -> voi
 			var ds := rng.randf_range(0.1, 0.5)
 			var g := rng.randf_range(0.18, 0.42)
 			Scn.decal("debris", q2, Vector2(ds, ds * rng.randf_range(0.5, 1.2)), rng.randf() * TAU, Color(g, g * 0.92, g * 0.8))
+
+
+# ================================================================== alley mouths (street-level readability)
+
+static var mouth_count := 0
+const MOUTH_PATCH := 3.0            # depth of the pale paving patch in front of an alley mouth, metres
+const MOUTH_PALE := Color(0.64, 0.62, 0.56)
+const MOUTH_BAR := Color(0.8, 0.79, 0.74)
+const SIGN_ALLEY := Color(0.15, 0.3, 0.58)
+const SIGN_WALK := Color(0.16, 0.46, 0.27)
+const POST := Color(0.3, 0.31, 0.33)
+
+
+## Every end of a side street or alley that opens onto a wider street gets a pale paving patch on the road in front of it, a pale
+## stop bar across it and a small sign post on one corner (a lit plate in the dark ones), so the mouths read at a glance against
+## plain walls. Flat decals and boxes through Scn (shared meshes), no colliders, none in the hand-built places.
+static func mouths() -> void:
+	var hand: Array = [City.INSTITUTE_BLOCK, City.HOME_BLOCK, City.PARK_BLOCK, City.COURT_BLOCK]
+	var n := 0
+	for st in City.streets:
+		var r: Rect2 = st["rect"]
+		var w := minf(r.size.x, r.size.y)
+		if w > 8.5 or maxf(r.size.x, r.size.y) < 8.0:
+			continue
+		var along_x := r.size.x > r.size.y
+		var info := City.class_info(String(st["cls"]))
+		for end in 2:
+			var d := Vector2(1.0 if end == 1 else -1.0, 0.0) if along_x else Vector2(0.0, 1.0 if end == 1 else -1.0)
+			var edge := Vector2((r.end.x if end == 1 else r.position.x) if along_x else r.get_center().x, r.get_center().y if along_x else (r.end.y if end == 1 else r.position.y))
+			var probe := edge + d * 1.5
+			var wide_w := 0.0
+			for o in City.streets:
+				var orr: Rect2 = o["rect"]
+				if orr != r and orr.has_point(probe):
+					wide_w = maxf(wide_w, minf(orr.size.x, orr.size.y))
+			if wide_w < w + 2.5:
+				continue
+			var skip := false
+			for hb in hand:
+				if (hb as Rect2).has_point(edge):
+					skip = true
+			if skip or absf(edge.x) > City.IN_X - 4.0 or absf(edge.y) > City.IN_Z - 4.0:
+				continue
+			var perp := Vector2(-d.y, d.x)
+			var c := edge + d * (1.0 + MOUTH_PATCH * 0.5)
+			Scn.decal("paint", c, Vector2(MOUTH_PATCH, w + 1.0) if along_x else Vector2(w + 1.0, MOUTH_PATCH), 0.0, MOUTH_PALE)
+			var bar := edge + d * (1.0 + MOUTH_PATCH)
+			Scn.decal("paint", bar, Vector2(0.35, w + 1.0) if along_x else Vector2(w + 1.0, 0.35), 0.0, MOUTH_BAR, 0.036)
+			# the sign post stands on one corner, alternating by position so the two ends of a street differ
+			var sgn := 1.0 if (int(floorf(edge.x + edge.y)) + end) % 2 == 0 else -1.0
+			var pp := edge + d * 0.6 + perp * sgn * (w * 0.5 + 0.35)
+			var base := Vector3(pp.x, 0.15, pp.y)
+			Scn.between("cyl", base, base + Vector3(0, 3.0, 0), 0.1, POST)
+			var plate_size := Vector3(0.05, 0.32, 0.6) if along_x else Vector3(0.6, 0.32, 0.05)
+			var col := SIGN_ALLEY if String(st["cls"]) == "alley" else SIGN_WALK
+			Scn.box(base + Vector3(0, 3.0, 0), plate_size, col)
+			if float(info["light"]) <= 0.5:
+				var glow_size := Vector3(0.07, 0.12, 0.4) if along_x else Vector3(0.4, 0.12, 0.07)
+				Scn.part("glow", Scn.box_xf(base + Vector3(d.x * 0.07, 3.28, d.y * 0.07), glow_size), Color(1.0, 0.84, 0.5))
+			n += 1
+	mouth_count = n

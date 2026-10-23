@@ -24,6 +24,16 @@ const MIN_LOT := 12.0
 const MAX_LOT := 34.0
 ## How likely soldiers are to be placed on a street, per square metre, by street class.
 const WEIGHTS := {"avenue": 1.6, "plaza": 0.6, "street": 0.5, "walk": 0.3, "alley": 0.15}
+## The four street classes of the city (the code names in `streets[i]["cls"]`): width range in metres, cover = planted cover objects per
+## 100 m of street (CityWar.street_cover; avenues get only the rings round battle sites and keep x = 0 / z = 0 clear), light = how bright
+## it feels 0..1 (street lamps, paving tone, corner signs: avenues are lit and open, alleys dark). The soldier weight is `WEIGHTS[cls]`.
+##   avenue "avenue"  20-24 m   street "street" 12 m   side street "walk" 6-8 m (footpaths up to 10 m, border lanes 8 m)   alley "alley" 3-4 m
+const STREET_CLASSES := {
+	"avenue": {"label": "avenue", "width_min": 18.0, "width_max": 24.0, "cover": 0.0, "light": 1.0},
+	"street": {"label": "street", "width_min": 11.0, "width_max": 13.0, "cover": 7.0, "light": 0.75},
+	"walk": {"label": "side street", "width_min": 5.0, "width_max": 10.0, "cover": 1.5, "light": 0.5},
+	"alley": {"label": "alley / footpath", "width_min": 3.0, "width_max": 4.0, "cover": 0.0, "light": 0.2},
+}
 ## Parked vehicle types: size = width, height, length (metres); w = how common.
 const CAR_TYPES := [
 	{"name": "hatch", "size": Vector3(1.7, 1.45, 3.6), "w": 3.0},
@@ -103,6 +113,8 @@ static var crouch_passages: Array = []   # {pos, rect, along_x, width, kind: pip
 static var lights: Array = []       # {pos: Vector3, range: float, energy: float, color: Color}
 static var layers: Array = []       # nav layers (interior / balcony grids linked to a parent grid at one spot)
 static var lots: Array = []         # {b: the building dict, r: the lot rectangle}: every generated lot (not the hand-built places), for CityLinks
+static var interiors: Array = []     # CityInteriors plans (one per enterable building; streamed in by Interiors while the player is near)
+static var _live: Array = []         # indices of the layers that exist right now (the hand-built ones always, an interior only while it is streamed in)
 static var _astar: AStarGrid2D = null
 static var _main_grid: Dictionary = {}
 static var _cum: PackedFloat32Array = PackedFloat32Array()   # cumulative street weights, for random spawn spots
@@ -110,6 +122,13 @@ static var _cum: PackedFloat32Array = PackedFloat32Array()   # cumulative street
 const GLASS := [Color(0.42, 0.58, 0.66), Color(0.36, 0.5, 0.62), Color(0.5, 0.66, 0.7), Color(0.3, 0.42, 0.5), Color(0.55, 0.62, 0.7)]
 const CONCRETE := [Color(0.62, 0.62, 0.6), Color(0.52, 0.53, 0.55), Color(0.72, 0.7, 0.66), Color(0.44, 0.45, 0.47), Color(0.8, 0.8, 0.78)]
 const BRICK := [Color(0.55, 0.34, 0.27), Color(0.6, 0.45, 0.35), Color(0.42, 0.3, 0.28)]
+
+
+## The class table entry of a street class plus its soldier weight; plazas count as avenues for width and light.
+static func class_info(cls: String) -> Dictionary:
+	var info: Dictionary = (STREET_CLASSES.get(cls, STREET_CLASSES["avenue"]) as Dictionary).duplicate()
+	info["weight"] = float(WEIGHTS.get(cls, 0.5))
+	return info
 
 
 static func avenue_width(v: float) -> float:
@@ -141,6 +160,8 @@ static func generate(seed_value: int = 2077) -> void:
 	CityStory.reset()
 	lights.clear()
 	layers.clear()
+	interiors.clear()
+	_live.clear()
 	lots.clear()
 	for x in AVENUE_X:
 		var w := avenue_width(x)
@@ -178,6 +199,7 @@ static func generate(seed_value: int = 2077) -> void:
 		CityWar.wreck_cars(seed_value)
 		CityWar.obstacles(seed_value)
 		CityStory.dress(seed_value)
+		CityWar.street_cover(seed_value)             # after the story dressing (which keeps its places): staggered cover on the 12 m streets
 		CityClimb.plan(seed_value)
 		CityBuildings.dress(seed_value)
 		CityClimb.build(seed_value)
@@ -186,6 +208,9 @@ static func generate(seed_value: int = 2077) -> void:
 		CityRoads.build(road_rng)
 	CityPlaces.build_pipes()                    # the drainpipes of the neighbourhood (after CityClimb.build cleared the ladders)
 	_build_nav()
+	if not plain:
+		CityInteriors.plan(seed_value)               # needs the navigation grid (door fronts must be free); adds one inactive layer per enterable building
+	_build_width_grid()
 	_cum.resize(streets.size())
 	var acc := 0.0
 	for i in streets.size():
@@ -695,15 +720,37 @@ static func _build_layers() -> void:
 	_add_layer("balcony", BALCONY_RECT, 0.5, 2.5, 8.0, BALCONY_Y, -1,
 		Vector3(66.5, 0.0, BALCONY_POS.z - 0.2), [Vector3(68.5, 1.1, BALCONY_POS.z), Vector3(70.5, 2.4, BALCONY_POS.z)],
 		Vector3(72.7, BALCONY_Y, BALCONY_POS.z), [BALCONY_RECT], 0.4)
+	_live = []
+	for li in layers.size():
+		_live.append(li)
 
 
 ## Which layer a point belongs to (-1 = the main grid).
 static func layer_of(p: Vector3) -> int:
-	for i in layers.size():
+	for i in _live:
 		var l: Dictionary = layers[i]
 		if (l["rect"] as Rect2).has_point(Vector2(p.x, p.z)) and p.y >= float(l["ymin"]) and p.y <= float(l["ymax"]):
 			return i
 	return -1
+
+
+## An interior's navigation grid: `rect` (the whole footprint, solid) with `inner` opened and `solids` (wall / prop rectangles) closed
+## again with a margin, 0.5 m cells. Used by Interiors when the building is streamed in.
+static func interior_grid(rect: Rect2, inner: Rect2, solids: Array, margin: float) -> Dictionary:
+	var g := _new_grid(rect, 0.5, true)
+	_g_set(g, inner, 0.0, false)
+	for s in solids:
+		_g_set(g, s as Rect2, margin, true)
+	return g
+
+
+## Switch an interior layer on (grid built) or off (grid freed). Layer indices never move, so nothing that stores one breaks.
+static func interior_layer(i: int, grid: Dictionary) -> void:
+	layers[i]["grid"] = grid
+	if grid.is_empty():
+		_live.erase(i)
+	elif not _live.has(i):
+		_live.append(i)
 
 
 static func _grid_of(l: int) -> Dictionary:
@@ -794,13 +841,16 @@ static func random_point_near(rng: RandomNumberGenerator, center: Vector3, rmin:
 
 ## A random walkable spot at least `min_dist` from `avoid`; streets are picked by area x class weight,
 ## so wide avenues get most of the soldiers and alleys very few. Returns {pos, cls}.
-static func random_spawn(rng: RandomNumberGenerator, avoid: Vector3, min_dist: float) -> Dictionary:
+## `only` limits the street classes ("avenue", "street", "walk", "alley", "plaza"); the result also names the street (`idx`).
+static func random_spawn(rng: RandomNumberGenerator, avoid: Vector3, min_dist: float, only: Array = []) -> Dictionary:
 	var total := _cum[_cum.size() - 1]
-	for tries in 80:
+	for tries in (400 if not only.is_empty() else 80):
 		var roll := rng.randf() * total
 		var idx := 0
 		while idx < _cum.size() - 1 and _cum[idx] < roll:
 			idx += 1
+		if not only.is_empty() and not only.has(String(streets[idx]["cls"])):
+			continue
 		var r: Rect2 = streets[idx]["rect"]
 		var p := Vector3(rng.randf_range(r.position.x + 0.8, r.end.x - 0.8) if r.size.x > 1.6 else r.get_center().x, 0.0,
 			rng.randf_range(r.position.y + 0.8, r.end.y - 0.8) if r.size.y > 1.6 else r.get_center().y)
@@ -808,8 +858,8 @@ static func random_spawn(rng: RandomNumberGenerator, avoid: Vector3, min_dist: f
 			continue
 		if not is_free(p) or Vector2(p.x - avoid.x, p.z - avoid.z).length() < min_dist:
 			continue
-		return {"pos": p, "cls": streets[idx]["cls"]}
-	return {"pos": Vector3(0.0, 0.0, -60.0), "cls": "avenue"}
+		return {"pos": p, "cls": streets[idx]["cls"], "idx": idx}
+	return {"pos": Vector3(0.0, 0.0, -60.0), "cls": "avenue", "idx": -1}
 
 
 ## Share of the walkable ground inside the playable area that can be reached on foot from `from` (4-neighbour flood fill
@@ -842,3 +892,85 @@ static func reachable_fraction(from: Vector3) -> float:
 			if not _astar.is_point_solid(Vector2i(x, z)):
 				total += 1
 	return float(reached) / maxf(1.0, float(total))
+
+
+# ---------------------------------------------------------------- street width, alley mouths, patrol segments (soldier placement, hunter tuning)
+
+static var _wgrid: PackedByteArray = PackedByteArray()      # 1 m cells over the whole map: the width in metres of the narrowest street rectangle there (0 = none)
+static var _mouths: Array = []
+
+
+static func _build_width_grid() -> void:
+	var nx := int(OUT_X * 2.0)
+	var nz := int(OUT_Z * 2.0)
+	_wgrid.resize(nx * nz)
+	_wgrid.fill(0)
+	for st in streets:
+		var r: Rect2 = st["rect"]
+		var w := mini(255, int(roundf(minf(r.size.x, r.size.y))))
+		for z in range(maxi(0, floori(r.position.y + OUT_Z)), mini(nz, ceili(r.end.y + OUT_Z))):
+			for x in range(maxi(0, floori(r.position.x + OUT_X)), mini(nx, ceili(r.end.x + OUT_X))):
+				var i := z * nx + x
+				if _wgrid[i] == 0 or w < _wgrid[i]:
+					_wgrid[i] = w
+	_mouths = []
+
+
+## The width (m) of the narrowest street at p, 0 when p is on no street rectangle (hand-built places, inside a building).
+static func street_width_at(p: Vector3) -> float:
+	var x := floori(p.x + OUT_X)
+	var z := floori(p.z + OUT_Z)
+	var nx := int(OUT_X * 2.0)
+	if _wgrid.is_empty() or x < 0 or z < 0 or x >= nx or z >= int(OUT_Z * 2.0):
+		return 0.0
+	return float(_wgrid[z * nx + x])
+
+
+## Where side streets and alleys (8.5 m or less) open onto a wider street: [{pos: Vector2 on the street's edge, out: Vector2 (into the wide street), width}].
+static func alley_mouths() -> Array:
+	if not _mouths.is_empty():
+		return _mouths
+	for st in streets:
+		var r: Rect2 = st["rect"]
+		var w := minf(r.size.x, r.size.y)
+		if w > 8.5 or maxf(r.size.x, r.size.y) < 8.0:
+			continue
+		var along_x := r.size.x > r.size.y
+		for end in 2:
+			var d := Vector2(1.0 if end == 1 else -1.0, 0.0) if along_x else Vector2(0.0, 1.0 if end == 1 else -1.0)
+			var edge := Vector2((r.end.x if end == 1 else r.position.x) if along_x else r.get_center().x, r.get_center().y if along_x else (r.end.y if end == 1 else r.position.y))
+			var wide_w := 0.0
+			for o in streets:
+				var orr: Rect2 = o["rect"]
+				if orr != r and orr.has_point(edge + d * 1.5):
+					wide_w = maxf(wide_w, minf(orr.size.x, orr.size.y))
+			if wide_w >= w + 2.5 and absf(edge.x) < IN_X - 4.0 and absf(edge.y) < IN_Z - 4.0:
+				_mouths.append({"pos": edge, "out": d, "width": wide_w, "cls": st["cls"]})
+	return _mouths
+
+
+## Which stretch of street a point belongs to: the street rectangle plus the interval between two crossing through streets
+## ("one patrol per 12 m street segment between two avenues").
+static func segment_key(idx: int, p: Vector3) -> String:
+	if idx < 0:
+		return "-1"
+	var r: Rect2 = streets[idx]["rect"]
+	var az := r.size.y > r.size.x
+	var lines: Array = AVENUE_Z if az else AVENUE_X
+	var along := p.z if az else p.x
+	var seg := 0
+	for l in lines:
+		if float(l) < along:
+			seg += 1
+	return "%d:%d" % [idx, seg]
+
+
+## Is `p` within 2.5 m of a door or stair link (where a layer joins the street)? Paths there are followed closely.
+static func near_link(p: Vector3) -> bool:
+	for i in _live:
+		var l: Dictionary = layers[i]
+		for k in ["outer", "inner"]:
+			var q: Vector3 = l[k]
+			if absf(q.x - p.x) < 2.5 and absf(q.z - p.z) < 2.5:
+				return true
+	return false

@@ -53,3 +53,14 @@ unused and was deleted on 2026-10-23.
   (not CC): read Adobe's current Mixamo FAQ if the game is sold. The CC-BY credit for the mesh still applies.
 - The project has no audio or other image files besides the textures that belong to the models above; the city, buildings
   and sky are built in code.
+
+## Cars in `models/cars/`
+
+| File | What it is | Author / source | Licence |
+|---|---|---|---|
+| `sedan.glb`, `van.glb`, `coupe.glb` | Futuristic sedan, armoured van and sports coupe, generated for the project with AssetHub (image: flux3, mesh: Tripo 3.1, smart low poly), then reduced to under 10k triangles and 512 px textures | generated on 2026-10-23 | AssetHub generation terms (check them before the game is published) |
+| `cybertruck.glb` | Tesla Cybertruck - Futuristic 3D Model (9.8k triangles; textures reduced to 512 px) | The file's own metadata names "3D Next Level Gen" (https://sketchfab.com/3dnextlevelgen); the project owner named https://sketchfab.com/dimenxioner.com as the creator: confirm which is right | Sketchfab Standard (https://sketchfab.com/licenses), source https://sketchfab.com/3d-models/tesla-cybertruck-futuristic-3d-model-6c5bdda1d10a46fbb2b5168302fbca48 |
+| `ev.glb` | EV Car model (8.3k triangles, 19 parts) | N.K (https://sketchfab.com/3dassets), source https://sketchfab.com/3d-models/ev-car-model-1a87bab83fba4411922557d39e22daa4 | Sketchfab Standard |
+
+The Sketchfab Standard licence lets the model be used inside a project, but not handed on as a file on its own: do not publish `models/cars/cybertruck.glb`
+or `ev.glb` in a public repository or asset pack. Scaled, merged and turned in code (`scripts/parked_cars.gd`).

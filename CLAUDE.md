@@ -8,15 +8,14 @@ First-person shooter prototype in Godot 4.7 (GDScript, GL Compatibility). One ma
 3. Spawn enemies only through `Main._spawn_enemy_at` (gives the uid checkpoints need).
 4. Physics layers (`Game`): 1 world, 2 player, 4 enemy, 8 hitbox, 16 civilian, 32 kerb.
 5. Vertex colours are sRGB (`vertex_color_is_srgb = true`); fog is DEPTH fog (Compatibility renderer).
-6. Headless tests: wait a frame after teleports (`await frames(n)`); set `Game.force_input = true`.
-7. While working run ONE test function; run the full selftest (8-15 min, nothing else heavy running) once at the end.
-8. When behaviour changes, update the matching `docs/` file in the same task.
+6. Checking is a few seconds at the START and at the END of a task, nothing else: run `powershell -ExecutionPolicy Bypass -File tests/smoke.ps1` (headless start, about 10 s, fails on any script error). Do NOT run the full selftest, single test functions, perf baselines or screenshots unless the user asks for them by name. The user plays the game to judge the result.
+7. Do NOT update the `docs/` files after a change, and do not write test or results reports; just build what was asked. (Read the docs in the table below when they help you understand the code.)
 
 ## Commands
 - Run: `godot --path .` (add `-- --sandbox` for the sandbox mission)
-- One test function: `godot --headless --fixed-fps 120 --path . -- --script res://tests/one.gd <function>`
-- Full selftest: `godot --headless --fixed-fps 120 --path . -- --selftest`
-- On Windows `Godot.exe` captures no shell output: see docs/commands-and-testing.md.
+- Smoke check (start and end of a task): `powershell -ExecutionPolicy Bypass -File tests/smoke.ps1`
+- Only on request: full selftest `godot --headless --fixed-fps 120 --path . -- --selftest`, one function `-- --script res://tests/one.gd <function>`, tool scripts in tests/ (see docs/commands-and-testing.md).
+- On Windows `Godot.exe` captures no shell output: tests/smoke.ps1 handles it.
 
 ## If your task touches X, read docs/Y.md first
 Do not read docs files that are not related to the task.

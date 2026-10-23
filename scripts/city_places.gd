@@ -247,8 +247,10 @@ static func _balcony_building() -> void:
 	var fp := Rect2(62.0, -29.0, 40.0, 15.0)
 	var h := 10.4
 	var ledge := City.BALCONY_RECT
-	City.buildings.append({"rect": fp, "boxes": [_bx(fp, 0.0, h), _bx(ledge, City.BALCONY_Y - 0.3, City.BALCONY_Y)], "nav_rects": [fp], "style": 0.1,
-		"color": Color(0.64, 0.42, 0.34), "h": h, "story": true})
+	var boxes: Array = _hall_boxes(fp, h)
+	boxes.append(_bx(ledge, City.BALCONY_Y - 0.3, City.BALCONY_Y))
+	City.buildings.append({"rect": fp, "boxes": boxes, "nav_rects": [fp], "style": 0.1, "color": Color(0.64, 0.42, 0.34), "h": h, "story": true})
+	_hall_inside()
 	var rail: Array = []
 	var y_top := City.BALCONY_Y + 1.1
 	rail.append(_bx(Rect2(ledge.position.x, ledge.position.y, ledge.size.x, 0.1), y_top - 0.1, y_top))                    # north rail, top
@@ -263,6 +265,82 @@ static func _balcony_building() -> void:
 	City.buildings.append({"rect": ledge, "boxes": rail, "nav_rects": [], "style": 0.99, "color": Color(0.2, 0.22, 0.25), "h": y_top, "no_slab": true})
 	_stairs(Vector3(ledge.position.x, City.BALCONY_Y, City.BALCONY_POS.z), Vector3(66.8, 0.0, City.BALCONY_POS.z), 1.6, CONCRETE)
 
+
+
+## Wall boxes along x (at z = line) or along z (at x = line) from a to b with openings [[from, to], ...]: each opening keeps a sill up to
+## `sill` and a lintel from `head` (a door has sill 0), so shots and people pass through the gap only.
+static func _pierced(line: float, a: float, b: float, t: float, along_x: bool, gaps: Array, y0: float, y1: float, sill: float, head: float) -> Array:
+	var out: Array = []
+	var pos := a
+	for g in gaps:
+		if float(g[0]) > pos + 0.01:
+			out.append(_seg(line, pos, g[0], t, along_x, y0, y1))
+		if sill > 0.01:
+			out.append(_seg(line, g[0], g[1], t, along_x, y0, y0 + sill))
+		out.append(_seg(line, g[0], g[1], t, along_x, y0 + head, y1))
+		pos = g[1]
+	if b > pos + 0.01:
+		out.append(_seg(line, pos, b, t, along_x, y0, y1))
+	return out
+
+
+
+## The sniper's galleries inside the balcony building: two storeys of one long hall (39 x 8 m) along the park side, the lower one level with the
+## balcony (a doorway from it), the upper one 3.4 m higher, joined by a stair along the south wall. The north wall has real open windows exactly where
+## the facade shader paints its windows (cells of 2.8 m, 1.08 - 3.06 m above each 3.6 m storey line), so the facade looks the same from outside.
+## Lower windows sit above the balcony (x 72 - 94) so nobody can step out of them.
+const HALL := Rect2(62.4, -28.6, 39.2, 8.0)
+const HALL_UP := 6.8
+const LOW_WINDOWS := [[73.36, 75.04], [78.96, 80.64], [84.56, 86.24], [90.16, 91.84]]
+const HIGH_WINDOWS := [[67.76, 69.44], [73.36, 75.04], [78.96, 80.64], [84.56, 86.24], [90.16, 91.84], [95.76, 97.44]]
+const DOOR := [76.2, 78.2]
+const STAIR_HOLE_HALL := Rect2(69.5, -22.6, 6.5, 2.0)
+
+
+static func _north_wall() -> Array:
+	var y0 := City.BALCONY_Y
+	var line := -28.8
+	var out: Array = []
+	out.append_array(_pierced(line, 62.0, DOOR[0], 0.4, true, [LOW_WINDOWS[0]], y0, HALL_UP, 1.28, 3.26))
+	out.append(_seg(line, DOOR[0], DOOR[1], 0.4, true, y0 + 2.4, HALL_UP))                       # the lintel over the doorway
+	out.append_array(_pierced(line, DOOR[1], 102.0, 0.4, true, [LOW_WINDOWS[1], LOW_WINDOWS[2], LOW_WINDOWS[3]], y0, HALL_UP, 1.28, 3.26))
+	out.append_array(_pierced(line, 62.0, 102.0, 0.4, true, HIGH_WINDOWS, HALL_UP, 10.4, 1.48, 3.46))
+	return out
+
+
+static func _hall_boxes(fp: Rect2, h: float) -> Array:
+	var y0 := City.BALCONY_Y
+	var boxes: Array = [_bx(fp, 0.0, y0)]                                                           # the ground storey stays solid
+	boxes.append(_bx(Rect2(62.0, -20.6, 40.0, 6.6), y0, h))                                         # the south block behind the hall
+	boxes.append(_bx(Rect2(62.0, -29.0, 0.4, 8.4), y0, h))                                          # west and east walls
+	boxes.append(_bx(Rect2(101.6, -29.0, 0.4, 8.4), y0, h))
+	boxes.append_array(_north_wall())
+	for piece in cut(HALL, [STAIR_HOLE_HALL]):                                                      # the upper floor, open over the stair
+		boxes.append(_bx(piece, HALL_UP - 0.2, HALL_UP))
+	boxes.append(_bx(HALL, 10.26, h))                                                               # the roof over the hall
+	return boxes
+
+
+static func _hall_inside() -> void:
+	var y0 := City.BALCONY_Y
+	var top := 10.26
+	_liner(Rect2(HALL.position.x, HALL.position.y, 0.06, HALL.size.y), y0, top, INTERIOR)           # west, east and south linings
+	_liner(Rect2(HALL.end.x - 0.06, HALL.position.y, 0.06, HALL.size.y), y0, top, INTERIOR)
+	_liner(Rect2(HALL.position.x, HALL.end.y - 0.06, HALL.size.x, 0.06), y0, top, INTERIOR)
+	for b in _north_wall():                                                                         # the north lining, with the window openings
+		var r: Rect2 = b["rect"]
+		_liner(Rect2(r.position.x, HALL.position.y, r.size.x, 0.06), float(b["y0"]), float(b["y1"]), INTERIOR)
+	_liner(HALL, y0, y0 + 0.03, Color(0.5, 0.42, 0.35))                                             # floor
+	_stairs(Vector3(76.0, HALL_UP, -21.6), Vector3(69.0, y0, -21.6), 2.0, CONCRETE)
+	_liner(Rect2(STAIR_HOLE_HALL.position.x, STAIR_HOLE_HALL.position.y, STAIR_HOLE_HALL.size.x, 0.06), HALL_UP - 0.2, HALL_UP, CONCRETE)
+	# desks to rest a rifle on, under some of the windows
+	for dx in [74.2, 85.4]:
+		_prop(Rect2(dx - 1.2, -28.0, 2.4, 0.7), y0, y0 + 0.9, Color(0.5, 0.42, 0.3), "")
+	for dx in [68.6, 79.8, 91.0, 96.6]:
+		_prop(Rect2(dx - 1.2, -28.0, 2.4, 0.7), HALL_UP, HALL_UP + 0.9, Color(0.5, 0.42, 0.3), "")
+	City.lights.append({"pos": Vector3(78.0, y0 + 2.8, -24.6), "range": 22.0, "energy": 0.8, "color": Color(1.0, 0.93, 0.78)})
+	City.lights.append({"pos": Vector3(90.0, HALL_UP + 2.8, -24.6), "range": 22.0, "energy": 0.8, "color": Color(1.0, 0.93, 0.78)})
+	City.lights.append({"pos": Vector3(68.0, HALL_UP + 2.8, -24.6), "range": 22.0, "energy": 0.8, "color": Color(1.0, 0.93, 0.78)})
 
 # ---------------------------------------------------------------- Noah's neighbourhood: the alleys, the courtyard and the drainpipes
 

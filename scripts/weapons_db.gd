@@ -4,6 +4,7 @@ class_name WeaponsDB
 const WEAPONS := {
 	"pistol": {
 		"name": "M9 PISTOL", "short": "M9", "slot": "pistol",
+		"carry": 1.03,             # walking and running speed while this is in hands (heavy guns slow you down)
 		"damage": 28.0,
 		"head_mult": 2.5,
 		"rpm": 420.0,
@@ -35,6 +36,7 @@ const WEAPONS := {
 	},
 	"rifle": {
 		"name": "PR-1 PULSE RIFLE", "short": "PR-1", "slot": "rifle",
+		"carry": 0.95,             # walking and running speed while this is in hands (heavy guns slow you down)
 		"damage": 24.0,
 		"head_mult": 2.2,
 		"rpm": 720.0,
@@ -67,6 +69,7 @@ const WEAPONS := {
 	# ---- weapons carried by enemies (blocky viewmodels, energy weapons: no brass, own sounds) ----
 	"carbine": {   # rifleman
 		"name": "PC-24 PULSE CARBINE", "short": "PC-24", "slot": "rifle",
+		"carry": 0.98,             # walking and running speed while this is in hands (heavy guns slow you down)
 		"damage": 20.0, "head_mult": 2.0, "rpm": 600.0, "auto": true, "mag": 24, "spare_mags": 4, "reload_time": 2.0, "pellets": 1,
 		"spread_hip": 2.4, "spread_ads": 0.35, "spread_move": 2.0, "spread_per_shot": 0.3, "spread_max_bloom": 2.6,
 		"recoil_pitch": 0.7, "recoil_yaw": 0.35, "recoil_recover": 8.0,
@@ -78,6 +81,7 @@ const WEAPONS := {
 	},
 	"hmg": {   # gunner
 		"name": "HG-60 HEAVY PULSE GUN", "short": "HG-60", "slot": "rifle",
+		"carry": 0.7,             # walking and running speed while this is in hands (heavy guns slow you down)
 		"damage": 17.0, "head_mult": 1.8, "rpm": 800.0, "auto": true, "mag": 60, "spare_mags": 3, "reload_time": 4.0, "pellets": 1,
 		"spread_hip": 3.4, "spread_ads": 0.8, "spread_move": 3.0, "spread_per_shot": 0.3, "spread_max_bloom": 4.0,
 		"recoil_pitch": 0.75, "recoil_yaw": 0.6, "recoil_recover": 6.0,
@@ -89,6 +93,7 @@ const WEAPONS := {
 	},
 	"railgun": {   # marksman
 		"name": "RG-5 RAIL RIFLE", "short": "RG-5", "slot": "rifle",
+		"carry": 0.88,             # walking and running speed while this is in hands (heavy guns slow you down)
 		"damage": 85.0, "head_mult": 2.5, "rpm": 70.0, "auto": false, "mag": 5, "spare_mags": 3, "reload_time": 3.2, "pellets": 1,
 		"spread_hip": 3.5, "spread_ads": 0.05, "spread_move": 3.0, "spread_per_shot": 1.5, "spread_max_bloom": 3.0,
 		"recoil_pitch": 3.5, "recoil_yaw": 0.3, "recoil_recover": 5.0,
@@ -100,6 +105,7 @@ const WEAPONS := {
 	},
 	"sniper": {   # the marksman on the balcony (Chapter One, "The Lander"): heavy bolt-action long rifle, slow shells that drop
 		"name": "LR-9 LONG RIFLE", "short": "LR-9", "slot": "rifle",
+		"carry": 0.82,             # walking and running speed while this is in hands (heavy guns slow you down)
 		"damage": 120.0, "head_mult": 2.5, "rpm": 40.0, "auto": false, "mag": 5, "spare_mags": 3, "reload_time": 3.6, "pellets": 1,
 		"spread_hip": 4.5, "spread_ads": 0.02, "spread_move": 4.0, "spread_per_shot": 1.0, "spread_max_bloom": 2.0,
 		"recoil_pitch": 4.2, "recoil_yaw": 0.4, "recoil_recover": 4.0,
@@ -117,6 +123,7 @@ const WEAPONS := {
 	# ---- melee: LMB swings, no ammo ----
 	"knife": {
 		"name": "ARC KNIFE", "short": "KNIFE", "slot": "melee", "melee": true,
+		"carry": 1.12,             # walking and running speed while this is in hands (heavy guns slow you down)
 		"damage": 45.0, "head_mult": 1.0, "rpm": 130.0, "auto": false, "reach": 2.0, "reload_time": 1.0, "mag": 0, "spare_mags": 0, "pellets": 1,
 		"spread_hip": 0.0, "spread_ads": 0.0, "spread_move": 0.0, "spread_per_shot": 0.0, "spread_max_bloom": 0.0,
 		"recoil_pitch": 0.0, "recoil_yaw": 0.0, "recoil_recover": 8.0,
@@ -128,6 +135,7 @@ const WEAPONS := {
 	},
 	"blade": {   # blade fighter
 		"name": "PLASMA BLADE", "short": "BLADE", "slot": "melee", "melee": true,
+		"carry": 1.06,             # walking and running speed while this is in hands (heavy guns slow you down)
 		"damage": 85.0, "head_mult": 1.0, "rpm": 85.0, "auto": false, "reach": 2.6, "reload_time": 1.0, "mag": 0, "spare_mags": 0, "pellets": 1,
 		"spread_hip": 0.0, "spread_ads": 0.0, "spread_move": 0.0, "spread_per_shot": 0.0, "spread_max_bloom": 0.0,
 		"recoil_pitch": 0.0, "recoil_yaw": 0.0, "recoil_recover": 8.0,

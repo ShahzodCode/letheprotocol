@@ -22,6 +22,8 @@ void fragment() {
 }
 """
 
+static var registry: Dictionary = {}     # building iid -> [MultiMesh, instance index, original Transform3D]: Interiors shrinks the box of a building it opens
+
 const SMOKE_H := {"tree": [8.0, 22.0, 5.0], "car": [10.0, 32.0, 8.0], "build": [30.0, 110.0, 22.0]}      # start height, height, top width
 
 
@@ -36,7 +38,7 @@ static func build(world: World) -> Fires:
 ## One MultiMesh per `cell` metres square instead of one for the whole city: the renderer culls a MultiMesh as a whole, so a single
 ## city-wide one is drawn (and shadow-rendered) in full from everywhere. `range_end` > 0 hides a chunk beyond that distance.
 ## An item is [Transform3D, Color] or [Transform3D, Color, Color custom data].
-static func _mm(world: Node3D, mesh: Mesh, items: Array, mat: Material, shadows: bool, range_end: float = 0.0, cell: float = 96.0) -> void:
+static func _mm(world: Node3D, mesh: Mesh, items: Array, mat: Material, shadows: bool, range_end: float = 0.0, cell: float = 96.0, range_begin: float = 0.0) -> void:
 	if items.is_empty():
 		return
 	var groups := {}
@@ -60,6 +62,8 @@ static func _mm(world: Node3D, mesh: Mesh, items: Array, mat: Material, shadows:
 			mm.set_instance_color(i, list[i][1])
 			if custom:
 				mm.set_instance_custom_data(i, list[i][2])
+			if (list[i] as Array).size() > 3 and int(list[i][3]) >= 0:
+				registry[int(list[i][3])] = [mm, i, list[i][0]]
 		var inst := MultiMeshInstance3D.new()
 		inst.multimesh = mm
 		inst.material_override = mat
@@ -68,6 +72,9 @@ static func _mm(world: Node3D, mesh: Mesh, items: Array, mat: Material, shadows:
 		if range_end > 0.0:
 			inst.visibility_range_end = range_end + cell
 			inst.visibility_range_end_margin = 10.0
+		if range_begin > 0.0:
+			inst.visibility_range_begin = range_begin + cell
+			inst.visibility_range_begin_margin = 10.0
 		world.add_child(inst)
 
 static func _box() -> BoxMesh:

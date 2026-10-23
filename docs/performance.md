@@ -33,6 +33,30 @@ The file was recorded on 2026-10-18 17:24 (full mode: war-torn city; plain mode:
 
 - **Animation update-rate LOD, 80 clip soldiers in view (2026-10-23; windowed 1280x720, vsync off, `LETHE_SEED` 12345; `tests/perf_anim.gd n=80 frames=360 tps=20`, 4 interleaved rounds, median of the run means).** The stress packs 80 blade / rifleman / gunner / marksman soldiers in the view down the central avenue, 10 to 160 m away, in HOLD so their clips keep running. At the default 60 Hz physics the scene falls into a death spiral (every frame runs the 8 catch-up ticks, 120-145 ms a frame) that hides any gain, so the tool lowers physics to 20 Hz (`tps=`) and reports the mean frame time. Before (`LETHE_NOANIMLOD=1`) 15.8 ms, after 14.9 ms (-6%, noise about 1 ms); stepped by hand: 64 of the 80. Ablations (after): bone hit boxes not synced 14.5 ms, soldier AI off (`set_physics_process(false)`) 11.6 ms. So animation itself is NOT the bottleneck of a crowd of soldiers: the AI tick (about 3.3 ms for 80) and rendering (about 11 ms: 1,050 draw calls, gpu 13 ms) are. The hit boxes were: the 11 bone-bound Areas of each soldier cost about 40% of the frame at 40 soldiers (74 -> 44 ms in the spiral) before they were rate-limited with the animation LOD. `AnimationPlayer.active = false` for all of them changed nothing measurable either (74 vs 86 ms in the spiral: noise).
 
+## City pass: before (2026-10-23, the tree with the armour kit, pose layer, bone hit boxes and animation LOD; before street cover, building and interior work)
+Tool: `tests/perf_city.gd` (`-- --script res://tests/perf_city.gd tag=<name> [speed=6] [check=1]`, windowed 1280x720, vsync off, default quality, `LETHE_SEED=12345`; `check=1` asserts the budgets from `tests/perf_city_before.json`). The "Chapter One walk" teleports the player along `City.path` from the Institute exit to the home door at 6 m/s (296 m, the AI live and hunting him: invulnerable), the "densest area" is the free street point with the most buildings, cars and trees within 100 m ((0, 120) on the central avenue; four headings, 150 frames each). Numbers are medians of 3 runs (the file is `tests/perf_city_before.json`).
+
+| | Chapter One walk | densest area (0, 120) |
+|---|---|---|
+| frame ms, mean | 26.1 | 18.2 |
+| frame ms, median / p95 / p99 | 18.9 / 65.5 / 101.4 | 15.0 / 45.3 / 103.2 |
+| worst frame (hitch log) | 167 ms; 721 of 1,928 frames over 25 ms | 128 ms; 153 of 600 frames over 25 ms |
+| draw calls, median (max) | 768 (915) | 322 (916) |
+| primitives, median (max) | 362,000 (422,000) | 171,000 (411,000) |
+| render cpu / gpu ms | 4.1 / 4.0 | 2.4 / 2.5 |
+
+| static counts | |
+|---|---|
+| nodes | 8,137 |
+| triangles in the scene (every mesh and MultiMesh instance, not view dependent) | 953,000; 275,000 of them in MultiMeshes (390 nodes, 14,798 instances) |
+| physics bodies | 8 StaticBody3D (4,180 collision shapes in them), 104 CharacterBody3D (35 soldiers, 50 civilians, player, ...), 456 Area3D (the bone hit boxes) |
+| buildings | 292 (53 of them the border ring), 128 cars, 333 trees, 44 hand-built props |
+| nav grid | main 344 x 624 m = 214,656 cells (91,557 free), 3 layers with 3,440 cells |
+| soldiers / civilians | 35 / 50 at the start |
+| AI tick | 65.8 microseconds per soldier per tick (35 soldiers: 2.3 ms per tick, 120 ticks a second = 28% of a core); `Enemy._physics_process` timed by hand, state as the walk left it |
+
+Reading: frame times are CPU bound and very spiky (the mean is far above the median): a third of the frames of the walk are over 25 ms. Two causes show in the numbers, both older than the city pass: the AI tick (2.3 ms per tick x 2 ticks per 16 ms frame) plus 11 bone-attached Area3Ds per soldier, and the 120 Hz physics catching up after a slow frame. The old baseline table above (lobby 5.9, avenue 3.1, site70 14.2 ms) was recorded before the armour kit and the bone hit boxes: the same spots today are lobby 9.5, avenue 9.0 (p95 62), site70 33.6 ms (`perf_probe.gd`, same session). Every "not slower" claim of the city pass is checked against the table above with `perf_city.gd check=1` (limit: 1.25 x mean and p95, worst frame at most 1.25 x, nav grid +10%, soldier count not up).
+
 ## Open optimisation ideas
 - The next saving for a crowd is the AI tick (`Enemy._physics_process`, about 40 us per soldier per tick) and the rendering of the skinned meshes (80 soldiers added about 300 draw calls, about 4 each), not the animation: rate-limit sensing by distance, merge the surfaces of far soldiers.
 - Re-record `tests/perf_baseline.json` after the narrow-street and soldier-count changes.

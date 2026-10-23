@@ -64,6 +64,7 @@ var empty_click_cd := 0.0
 var _trigger_was_down := false
 
 const HEAVY_DROP_RANGE := 16.0     # switching away from a heavy weapon (LR-9) with a hunter this close drops it where you stand
+const HEAVY_DROP := false         # off: switching away from the LR-9 used to drop it when a hunter was near, which looked like a bug
 const SHELL_G := 9.8               # slow shells (DB "bullet_speed") fall with this gravity
 const SHELL_STEP := 10.0           # ...traced in straight pieces of this length
 const BREATH_REGAIN := 4.0         # seconds to get a held breath back
@@ -366,7 +367,7 @@ func spare_mags() -> int:
 
 
 func move_mult() -> float:
-	return lerpf(1.0, float(stats()["ads_move"]), ads_k)
+	return lerpf(1.0, float(stats()["ads_move"]), ads_k) * float(stats().get("carry", 1.0))
 
 
 func current_spread() -> float:
@@ -576,7 +577,7 @@ func _start_switch(slot: String, idx: int) -> void:
 	if slot_locked(slot):
 		_lock_notice(slot)
 		return
-	if bool(stats().get("heavy", false)) and hunter_near(HEAVY_DROP_RANGE):
+	if HEAVY_DROP and bool(stats().get("heavy", false)) and hunter_near(HEAVY_DROP_RANGE):
 		# the long rifle is too heavy to run with: it stays where you stand (the pistol is the safe choice up close)
 		var target: Dictionary = loadout[slot][idx]
 		_drop_heavy()
@@ -1373,3 +1374,26 @@ func _ads_pos(s: Dictionary) -> Vector3:
 ## High-zoom weapons (rail rifle) look through a scope: the gun is hidden and the HUD draws the scope mask.
 func is_scoped() -> bool:
 	return float(stats()["ads_fov"]) < 40.0 and ads_k > 0.8
+
+
+## Menu button: the LR-9 long rifle and the HG-60 heavy gun, both full with the most spare magazines, in the two rifle slots; the LR-9 in hand.
+func give_heavy_set() -> void:
+	var set: Array = []
+	for id in ["sniper", "hmg"]:
+		var mag := int(WeaponsDB.WEAPONS[id]["mag"])
+		var spare: Array = []
+		for i in MAX_SPARE_MAGS:
+			spare.append(mag)
+		set.append(new_weapon(id, mag, spare))
+	loadout["rifle"] = set
+	last_idx["rifle"] = 0
+	reloading = false
+	reload_t = 0.0
+	ads_k = 0.0
+	if active_slot == "rifle":
+		_equip("rifle", 0)
+		_show_only(current)
+	else:
+		_start_switch("rifle", 0)
+	notice = "LR-9 + HG-60  FULL AMMO"
+	notice_t = 2.5

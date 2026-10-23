@@ -779,3 +779,144 @@ static func _lamps(rng: RandomNumberGenerator) -> void:
 						Scn.block(Rect2(p - Vector2(0.15, 0.15), Vector2(0.3, 0.3)), 0.25)
 						occ.add(Rect2(p - Vector2(0.4, 0.4), Vector2(0.8, 0.8)))          # later planners (fire escapes, the story) keep off the pole
 					t += 36.0
+
+
+# ================================================================== cover on the 12 m streets
+
+const COVER_JUNCTION := 7.0                 # the first / last metres of a stretch (the junction mouths) stay clear
+const COVER_SPACING := [12.0, 16.0]         # distance along the street between two cover objects (they alternate sides)
+const COVER_SIDE := [2.0, 3.0]              # how far from the middle line an object stands
+const COVER_KINDS := {"car": 45, "bus": 12, "containers": 25, "facade": 18}
+const COVER_HAND_PAD := 12.0                # the hand-built places and this much round them get no planted cover
+
+## A staggered chain of cover along every 12 m street: wrecked cars, bus wrecks, container pairs, fallen facade, alternating left and
+## right of the middle line, so that in any 40 m there is a place out of sight of the far end (tests/stealth_audit.gd measures it).
+## Cars go through the usual car list (WorldCars draws them); the rest are shared-mesh boxes with box colliders (Scn). Own random
+## stream. Never in the 7 m bands of x = 0 / z = 0, the junction mouths, the battle sites or the story places.
+static func street_cover(seed_value: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value + 9191
+	if occ == null:
+		occ = Scn.Occ.new()
+	var hand: Array = []
+	for hb in [City.INSTITUTE_BLOCK, City.HOME_BLOCK, City.PARK_BLOCK, City.COURT_BLOCK]:
+		hand.append((hb as Rect2).grow(COVER_HAND_PAD))
+	var total_w := 0
+	for k in COVER_KINDS:
+		total_w += int(COVER_KINDS[k])
+	for st in City.streets:
+		if st["cls"] != "street":
+			continue
+		var r: Rect2 = st["rect"]
+		if absf(minf(r.size.x, r.size.y) - 12.0) > 1.0:
+			continue
+		var az := r.size.y > r.size.x
+		var lo := r.position.y if az else r.position.x
+		var hi := r.end.y if az else r.end.x
+		var mid_lat := r.get_center().x if az else r.get_center().y
+		var cuts: Array = []
+		for o in City.streets:
+			var orr: Rect2 = o["rect"]
+			if orr == r or minf(orr.size.x, orr.size.y) < 9.5 or (orr.size.x > orr.size.y) != az:
+				continue
+			var it := r.intersection(orr)
+			if it.size.x > 0.0 and it.size.y > 0.0:
+				cuts.append([it.position.y, it.end.y] if az else [it.position.x, it.end.x])
+		for h in hand:
+			var it2 := r.intersection(h as Rect2)
+			if it2.size.x > 0.0 and it2.size.y > 0.0:
+				cuts.append([it2.position.y, it2.end.y] if az else [it2.position.x, it2.end.x])
+		cuts.sort_custom(func(a, b): return a[0] < b[0])
+		var mouths: Array = []                      # where narrow streets open onto this one: kept clear so the dashes across stay open
+		for o2 in City.streets:
+			var nr: Rect2 = o2["rect"]
+			if minf(nr.size.x, nr.size.y) <= 8.5 and (nr.size.x > nr.size.y) != az:
+				var it3 := r.grow(0.4).intersection(nr)
+				if it3.size.x > 0.0 and it3.size.y > 0.0:
+					mouths.append([it3.position.y, it3.end.y] if az else [it3.position.x, it3.end.x])
+		var segs: Array = []
+		var cur := lo
+		for c in cuts:
+			if c[0] > cur:
+				segs.append([cur, c[0]])
+			cur = maxf(cur, c[1])
+		if hi > cur:
+			segs.append([cur, hi])
+		for sg in segs:
+			var a: float = float(sg[0]) + COVER_JUNCTION
+			var b: float = float(sg[1]) - COVER_JUNCTION
+			if b - a < 8.0:
+				continue
+			var n := maxi(1, roundi((b - a) / ((COVER_SPACING[0] + COVER_SPACING[1]) * 0.5)))
+			var side := 1.0 if rng.randf() < 0.5 else -1.0
+			for i in n:
+				var u := a + (float(i) + 0.5) * (b - a) / float(n) + rng.randf_range(-1.5, 1.5)
+				var lat := mid_lat + side * rng.randf_range(COVER_SIDE[0], COVER_SIDE[1])
+				side = -side
+				var roll := rng.randi() % total_w
+				var kind := "car"
+				for k in COVER_KINDS:
+					roll -= int(COVER_KINDS[k])
+					if roll < 0:
+						kind = k
+						break
+				for shift in [0.0, 2.5, -2.5]:
+					var p := Vector2(lat, u + shift) if az else Vector2(u + shift, lat)
+					if _cover_try(kind, p, az, r, rng, mouths):
+						break
+
+
+static func _cover_try(kind: String, p: Vector2, az: bool, street: Rect2, rng: RandomNumberGenerator, mouths: Array) -> bool:
+	var reach := 7.0 if kind == "containers" else (6.0 if kind == "bus" else (3.0 if kind == "car" else 2.8))
+	var pu := p.y if az else p.x
+	for mo in mouths:
+		if pu + reach > float(mo[0]) - 1.5 and pu - reach < float(mo[1]) + 1.5:
+			return false
+	var along_yaw := 0.0 if az else PI * 0.5
+	if absf(p.x) > City.IN_X - 6.0 or absf(p.y) > City.IN_Z - 6.0 or _reserved(p, 4.0):
+		return false
+	var c3 := Vector3(p.x, 0.0, p.y)
+	match kind:
+		"car", "bus":
+			var ct: Dictionary = City.CAR_TYPES[5] if kind == "bus" else City.CAR_TYPES[rng.randi() % 4]
+			var yaw := along_yaw + rng.randf_range(-0.45, 0.45) + (PI if rng.randf() < 0.5 else 0.0)
+			var car := _new_car(ct, c3, yaw, ct["size"], rng)
+			finish_car(car)
+			var cr: Rect2 = car["rect"]
+			if not street.grow(-0.8).encloses(cr) or _in_clear(cr) or occ.hits(cr, 0.5) or _hits_building(cr):
+				return false
+			_add_car(car)
+			_damage(car, rng, "burnt" if kind == "bus" else "")
+			return true
+		"containers":
+			var basis := Basis(Vector3.UP, along_yaw)
+			var step := basis * Vector3(0.0, 0.0, 6.5)
+			var rects: Array = []
+			for k in 2:
+				var cp := c3 + step * float(k) - step * 0.5
+				rects.append([cp, Scn.footprint(Vector2(cp.x, cp.z), Vector2(1.25, 3.1), along_yaw)])
+			for rr in rects:
+				if not street.grow(-0.8).encloses(rr[1]) or _in_clear(rr[1]) or occ.hits(rr[1], 0.5) or _hits_building(rr[1]):
+					return false
+			var col: Color = _jit(CONTAINER_COLORS[rng.randi() % CONTAINER_COLORS.size()], rng, 0.12)
+			for rr in rects:
+				var cp2: Vector3 = rr[0]
+				var ccol := _jit(col, rng, 0.08)
+				Scn.prop(cp2 + Vector3(0, 1.3, 0), Vector3(2.4, 2.6, 6.06), ccol, along_yaw + rng.randf_range(-0.04, 0.04))
+				Scn.box(cp2 + basis * Vector3(0, 1.3, 3.06), Vector3(2.2, 2.4, 0.08), ccol.darkened(0.3), along_yaw)
+				Scn.block(rr[1], 0.2)
+				occ.add(rr[1])
+			return true
+		_:
+			var yaw2 := along_yaw + rng.randf_range(-0.3, 0.3)
+			var fp := Scn.footprint(p, Vector2(2.4, 1.6), yaw2)
+			if not street.grow(-0.8).encloses(fp) or _in_clear(fp) or occ.hits(fp, 0.5) or _hits_building(fp):
+				return false
+			var stone := _jit(Color(0.58, 0.57, 0.55), rng, 0.08)
+			Scn.prop(c3 + Vector3(0, 0.6, 0), Vector3(4.2, 1.2, 2.2), _jit(Color(0.34, 0.33, 0.32), rng, 0.1), yaw2)               # the heap...
+			Scn.prop(c3 + Basis(Vector3.UP, yaw2) * Vector3(0.2, 1.75, 0.5), Vector3(3.6, 0.3, 2.4), stone, yaw2, Basis(Vector3.RIGHT, 0.5))     # ...and a slab of facade leaning on it
+			Scn.box(c3 + Basis(Vector3.UP, yaw2) * Vector3(-1.0, 1.3, -0.7), Vector3(0.18, 0.18, 2.6), Color(0.28, 0.24, 0.22), yaw2 + 0.4, Basis(Vector3.RIGHT, 0.3))   # a bent beam
+			Scn.block(fp, 0.3)
+			occ.add(fp)
+			return true
+	return false

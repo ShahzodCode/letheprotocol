@@ -14,6 +14,11 @@ const AWNINGS := [Color(0.72, 0.14, 0.12), Color(0.14, 0.34, 0.6), Color(0.86, 0
 const ROOFS := [Color(0.58, 0.28, 0.18), Color(0.3, 0.32, 0.36), Color(0.5, 0.3, 0.22)]
 const SIDE_N := [Vector2(0, -1), Vector2(0, 1), Vector2(-1, 0), Vector2(1, 0)]       # north (-z), south (+z), west (-x), east (+x)
 const FLOOR_H := 3.4
+## Decoration that costs triangles but cannot be read from the street is trimmed (city pass, phase 2): roof units only on one-floor roofs
+## (and on the roofs the player can reach, CityClimb), no roof gardens, balconies only on the lowest floors.
+const ROOF_UNITS_MAX_H := 8.0
+const ROOF_GARDENS := false
+const BALCONY_TOP_FLOOR := 5
 
 static var heavy_count := 0
 static var light_count := 0
@@ -293,7 +298,7 @@ static func _balconies(b: Dictionary, rng: RandomNumberGenerator, dmg: float) ->
 	var col := Color(0.72, 0.71, 0.68)
 	var rail := Color(0.16, 0.18, 0.2)
 	b["balconies"] = true
-	for f in range(2, floors):
+	for f in range(2, mini(floors, BALCONY_TOP_FLOOR)):
 		var y := float(f) * 3.3 + 0.2
 		for i in n:
 			if rng.randf() < dmg * 0.55:
@@ -332,6 +337,8 @@ static func _awnings(b: Dictionary, rng: RandomNumberGenerator, max_sides: int) 
 
 ## AC units, a water tank, a stair bulkhead and an aerial on a roof at height `y`.
 static func _roof_units(b: Dictionary, rng: RandomNumberGenerator, y: float, solid: bool = false) -> void:
+	if not solid and y > ROOF_UNITS_MAX_H:
+		return
 	var boxes: Array = b["boxes"]
 	var top_box: Dictionary = boxes[boxes.size() - 1]
 	var r: Rect2 = (top_box["rect"] as Rect2).grow(-1.4)
@@ -376,6 +383,8 @@ static func _roof_units(b: Dictionary, rng: RandomNumberGenerator, y: float, sol
 
 ## A green roof: a layer of soil and grass, planters and a few small trees.
 static func _roof_garden(b: Dictionary, rng: RandomNumberGenerator, y: float) -> void:
+	if not ROOF_GARDENS:
+		return
 	var r: Rect2 = (b["rect"] as Rect2).grow(-0.9)
 	Scn.box(Vector3(r.get_center().x, y + 0.14, r.get_center().y), Vector3(r.size.x, 0.28, r.size.y), Color(0.2, 0.36, 0.16))
 	b["green_roof"] = true
