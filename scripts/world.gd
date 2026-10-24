@@ -33,6 +33,7 @@ func build() -> void:
 	_ground()
 
 	_buildings()
+	CityModels.build(self)
 	_ramps()
 	_street_details()
 	_cars()
@@ -154,7 +155,7 @@ func _buildings() -> void:
 	body.collision_mask = 0
 	add_child(body)
 	for sb in City.buildings:          # simple buildings (no way in, no ladder, no damage cut-out, no story role) get ONE collider for the whole footprint
-		sb["one_box"] = not (bool(sb.get("access", false)) or sb.has("tunnel") or sb.has("arch_damage") or sb.has("special") or sb.has("story") or sb.has("institute") or sb.has("home") or sb.has("bridge") or sb.has("nav_rects") or sb.has("slab_holes") or sb.has("no_slab"))
+		sb["one_box"] = not (bool(sb.get("access", false)) or sb.has("tunnel") or sb.has("arch_damage") or sb.has("special") or sb.has("story") or sb.has("institute") or sb.has("home") or sb.has("bridge") or sb.has("nav_rects") or sb.has("slab_holes") or sb.has("no_slab") or sb.has("model"))
 	var render: Array = []        # [Transform3D, Color, custom data]: drawn in chunks (see WorldWar._mm)
 	for i in items.size():
 		var bx: Dictionary = items[i][0]

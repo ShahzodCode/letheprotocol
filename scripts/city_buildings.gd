@@ -99,7 +99,7 @@ static func dress(seed_value: int) -> void:
 	var border: Array = []
 	var special: Array = []      # tunnels, bridge ends and reachable roofs (stage 3): never heavily damaged
 	for b in City.buildings:
-		if b.has("institute") or b.has("home") or b.has("story") or float(b["style"]) >= 0.97 or float(b["h"]) < 3.0:
+		if b.has("institute") or b.has("home") or b.has("story") or b.has("model") or float(b["style"]) >= 0.97 or float(b["h"]) < 3.0:
 			continue
 		b["damage"] = 0.0
 		b["burning"] = false

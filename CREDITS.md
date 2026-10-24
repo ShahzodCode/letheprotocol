@@ -64,3 +64,24 @@ unused and was deleted on 2026-10-23.
 
 The Sketchfab Standard licence lets the model be used inside a project, but not handed on as a file on its own: do not publish `models/cars/cybertruck.glb`
 or `ev.glb` in a public repository or asset pack. Scaled, merged and turned in code (`scripts/parked_cars.gd`).
+
+## Buildings in `models/buildings/`
+
+Author, licence and source read from each file (glTF `asset.extras`, written by the Sketchfab exporter). Placed by
+`scripts/city_models.gd`: scaled, turned, meshes merged per material, metal toned down, the hotel's road and a stray plane
+of the Japanese building left out. For the CC-BY ones say so in the credits ("adapted for Lethe Protocol").
+
+| File | Title | Author | Licence, source |
+|---|---|---|---|
+| `sci-fi_building_3.glb` | "Sci-fi Building 3" | Scarecrow_original (https://sketchfab.com/Scarecrow_original) | CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/), https://skfb.ly/otxTB |
+| `sci-fi_building_11.glb` | "Sci-fi Building 11" | Scarecrow_original (https://sketchfab.com/Scarecrow_original) | CC-BY-4.0, https://skfb.ly/otGBq |
+| `futuristic_building.glb` | "Futuristic building" | Hamood (https://sketchfab.com/Jarelllee) | CC-BY-4.0, https://skfb.ly/o88YV |
+| `office_building_2.glb` | "Office Building 2" | AMINE (https://sketchfab.com/amine0) | CC-BY-4.0, https://skfb.ly/oMWCE |
+| `grand_hotel_building.glb` | "Grand Hotel Building" | the file names Trueno (https://sketchfab.com/_trueno); the project owner named AMINE: confirm which is right | CC-BY-4.0, https://skfb.ly/oFxGC (https://sketchfab.com/3d-models/grand-hotel-building-c5c789f849664cd786d51598f4e09b0e) |
+| `residential_building.glb` | "Residential building" | the file names FLVCO (https://sketchfab.com/flvco); the project owner named AMINE: confirm which is right | CC-BY-4.0, https://skfb.ly/oG6Uq (https://sketchfab.com/3d-models/residential-building-2ebd5a213eff4960bbe0a72b8f328e7b) |
+| `korean_apartment.glb` | "Korean Apartment" | route_kahal (https://sketchfab.com/routekahal) | Sketchfab Standard (https://sketchfab.com/licenses), https://sketchfab.com/3d-models/korean-apartment-9ffdde24d4ec492e9f9dce4d3ef1c9c2 |
+| `building_no_6_form_tokyo_otemachi_building_pack.glb` | "Building No 6 form Tokyo Otemachi Building Pack" | DrCG (https://sketchfab.com/drcg) | Sketchfab Standard, https://sketchfab.com/3d-models/building-no-6-form-tokyo-otemachi-building-pack-e8e34afb92ba480f91af6f67a0471015 |
+| `building.glb` | "Building" | Fre1231 (https://sketchfab.com/Fre1231) | Sketchfab Standard, https://sketchfab.com/3d-models/building-fc6100ae0bc944f49eafd0056dee3410 |
+| `japanese_building__cc0.glb` | "Japanese Building \| CC0" (titled CC0, but the download carries the Sketchfab Standard licence) | Lit For 20 (https://sketchfab.com/LitFor20) | Sketchfab Standard, https://sketchfab.com/3d-models/japanese-building-cc0-4bde4dd51a3f4cacabc22324a7d0c62c |
+
+As with the cars: the four Sketchfab Standard files may be used in the game but not handed on as files on their own.

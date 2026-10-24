@@ -25,7 +25,7 @@ static var ladder_count := 0
 
 
 static func _ordinary(b: Dictionary) -> bool:
-	return not (b.has("institute") or b.has("home") or b.has("story") or b.get("border", false) or b.get("plug", false) or b.get("no_slab", false)) and float(b["style"]) < 0.97 and not b.has("special")
+	return not (b.has("institute") or b.has("home") or b.has("story") or b.get("border", false) or b.get("plug", false) or b.get("no_slab", false) or b.has("model")) and float(b["style"]) < 0.97 and not b.has("special")
 
 
 static func _in_street(p: Vector2) -> bool:

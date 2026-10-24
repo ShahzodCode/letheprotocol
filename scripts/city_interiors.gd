@@ -71,7 +71,7 @@ static func plan(seed_value: int) -> void:
 
 
 static func _eligible(b: Dictionary, hand: Array) -> bool:
-	for k in ["access", "tunnel", "arch_damage", "special", "story", "institute", "home", "bridge", "nav_rects", "slab_holes", "no_slab", "roof_pitched", "chunk", "hole"]:
+	for k in ["access", "tunnel", "arch_damage", "special", "story", "institute", "home", "bridge", "nav_rects", "slab_holes", "no_slab", "roof_pitched", "chunk", "hole", "model"]:
 		if b.has(k) and (k != "access" or bool(b[k])):
 			return _no("flag " + k)
 	if String(b.get("arch", "")) != "shop":
