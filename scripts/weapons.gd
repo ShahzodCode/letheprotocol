@@ -940,6 +940,10 @@ func _update_pickups() -> void:
 				notice = "+1 GRENADE"
 				notice_t = 2.0
 				pk.take()
+		elif pk.is_medkit:
+			if h < AMMO_RANGE and player.can_heal():
+				player.start_heal()
+				pk.take()
 		elif pk.is_ammo:
 			if h < AMMO_RANGE and _take_ammo(pk):
 				pk.take()

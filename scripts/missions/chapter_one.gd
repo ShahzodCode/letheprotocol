@@ -33,6 +33,38 @@ static func _grant_rifle(_m: Mission) -> void:
 	w.pick_up(Pickup.spawn_weapon(_main(), Game.player.global_position, "sniper", 5))
 
 
+## A med kit on the ground (outdoors: World height) or at `pos.y` (floors, the roof, the cellar, the lander).
+static func _ground(pos: Vector3) -> Vector3:
+	return Vector3(pos.x, World.height_at(pos.x, pos.z), pos.z)
+
+
+## Med kits at fixed spots, one before each hard fight: each appears when its objective starts (so the checkpoint taken right
+## after holds it, and a kit taken before a checkpoint stays taken).
+static func _add_medkits(m: Mission) -> void:
+	var spots := {
+		"search_home": HomeScene.KITCHEN_POS + Vector3(0, 0.03, 0),          # after the walk home
+		"cellar_door": Vector3(18.2, City.CELLAR_POS.y + 0.03, -21.5),        # cellar, south-west shelf: after the raid
+	}
+	var lk := CityStory.lookout
+	if not lk.is_empty():
+		spots["climb_roof"] = _ground(lk["foot"])                            # foot of the fire escape
+		spots["lookout"] = (lk["roof"] as Vector3) + Vector3(0, 0.03, 0)   # on the roof, for the marksman fight
+	if not CityStory.escape_lane().is_empty():
+		spots["escape_lanes"] = _ground(CityStory.escape_lane()["pos"])
+		spots["clear_courtyard"] = _ground(CityStory.pipe_foot())
+		spots["ramp"] = _ground(CityStory.court_pos())
+		spots["ship_sneak"] = LanderInterior.world_at(24.0, 41.0) + Vector3(0, 0.03, 0)   # in the hold, 5 m in from the ramp
+	for o in m.objectives:
+		if not spots.has(o["id"]):
+			continue
+		var prev: Callable = o["on_start"]
+		var at: Vector3 = spots[o["id"]]
+		o["on_start"] = func(mm: Mission) -> void:
+			if prev.is_valid():
+				prev.call(mm)
+			Pickup.spawn_medkit(_main(), at)
+
+
 static func build() -> Mission:
 	var m := Mission.new()
 	m.id = "chapter_one"
@@ -47,6 +79,7 @@ static func build() -> Mission:
 	]
 	var lk := CityStory.lookout
 	if lk.is_empty():
+		_add_medkits(m)
 		return m          # no lookout roof (LETHE_PLAIN=1): the slice ends at the cellar
 	var roof: Vector3 = lk["roof"]
 	var foot := CityStory.ramp_foot()
@@ -89,6 +122,7 @@ static func build() -> Mission:
 	])
 	var lane := CityStory.escape_lane()
 	if lane.is_empty():
+		_add_medkits(m)
 		return m
 	# "The Lander", part two: the run through Noah's neighbourhood, the courtyard, the wound (see ChaseFight)
 	var pipe := CityStory.pipe_foot()
@@ -123,4 +157,5 @@ static func build() -> Mission:
 		Mission.obj("commander", "KILL THE COMMANDER", {"type": "script",
 			"on_start": func(_mm: Mission) -> void: _main().ship.begin_confrontation()}),
 	])
+	_add_medkits(m)
 	return m

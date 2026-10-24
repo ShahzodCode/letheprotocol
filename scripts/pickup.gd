@@ -10,6 +10,7 @@ const WARN_TIME := 8.0        # blinks this long before it disappears
 
 var is_ammo := false
 var is_grenade := false     # a frag grenade (weapon_id stays empty)
+var is_medkit := false      # a first-aid kit placed in the story (heals Player.HEAL_AMOUNT over HEAL_TIME; never fades)
 var weapon_id := ""
 var ammo := 0               # weapon: rounds in the gun; magazine: rounds in it
 var spare = null            # weapon: Array[int] of spare magazines, or null = a full set
@@ -43,6 +44,16 @@ static func spawn_grenade(parent: Node, pos: Vector3) -> Pickup:
 	return _place(parent, p, pos)
 
 
+## A first-aid kit at a fixed story spot; collected automatically when hurt. `pos.y` is kept (floors, roofs, the lander).
+static func spawn_medkit(parent: Node, pos: Vector3) -> Pickup:
+	var p := Pickup.new()
+	p.is_medkit = true
+	p.keep = true
+	p.position = pos + Vector3(0, 0.05, 0)
+	parent.add_child(p)
+	return p
+
+
 static func _place(parent: Node, p: Pickup, pos: Vector3) -> Pickup:
 	# loot dropped underground (the cellar) keeps its own height
 	p.position = Vector3(pos.x, (pos.y if pos.y < -0.5 else World.height_at(pos.x, pos.z)) + 0.05, pos.z)
@@ -53,6 +64,8 @@ static func _place(parent: Node, p: Pickup, pos: Vector3) -> Pickup:
 func display_name() -> String:
 	if is_grenade:
 		return "FRAG GRENADE"
+	if is_medkit:
+		return "MED KIT"
 	var w: Dictionary = WeaponsDB.WEAPONS[weapon_id]
 	return String(w["name"])
 
@@ -63,14 +76,23 @@ func make_instance() -> Dictionary:
 
 
 func _ready() -> void:
-	if is_grenade:
+	if is_grenade or is_medkit:
 		_vis = Node3D.new()
 		add_child(_vis)
-		var gm := Grenade.build_model()
-		gm.scale = Vector3.ONE * 2.2
-		_vis.add_child(gm)
+		if is_medkit:
+			# a white first-aid box with a red cross on both faces and a grey handle
+			_box(_vis, Vector3(0.32, 0.2, 0.12), Vector3.ZERO, Color(0.9, 0.9, 0.88), false)
+			_box(_vis, Vector3(0.12, 0.025, 0.04), Vector3(0, 0.11, 0), Color(0.35, 0.36, 0.38), false)
+			for sz in [-0.062, 0.062]:
+				_box(_vis, Vector3(0.14, 0.04, 0.004), Vector3(0, 0, sz), Color(0.85, 0.1, 0.1), true)
+				_box(_vis, Vector3(0.04, 0.14, 0.004), Vector3(0, 0, sz), Color(0.85, 0.1, 0.1), true)
+			_beacon(Color(0.95, 0.2, 0.2), 1.0)
+		else:
+			var gm := Grenade.build_model()
+			gm.scale = Vector3.ONE * 2.2
+			_vis.add_child(gm)
+			_beacon(Color(0.4, 0.9, 0.3), 0.7)
 		_vis.position.y = 0.3
-		_beacon(Color(0.4, 0.9, 0.3), 0.7)
 		Game.pickups.append(self)
 		while Game.pickups.size() > MAX_ALIVE:
 			var oldg = Game.pickups.pop_front()

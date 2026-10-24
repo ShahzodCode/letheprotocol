@@ -32,6 +32,10 @@ var land_dip := 0.0
 var roll := 0.0
 var shake := 0.0              # camera shake (explosions), 0 .. 1, fades in about a second
 var hurt_k := 0.0             # 0..1 for the red flash
+const HEAL_AMOUNT := 25.0     # one med kit
+const HEAL_TIME := 3.0        # seconds the kit takes; health rises evenly meanwhile (moving, shooting and damage do not stop it)
+var heal_t := 0.0             # >0: seconds of healing left
+var _healed := 0.0            # health actually gained by the current kit (for the "+25 HEALTH" toast)
 var _look_delta := Vector2.ZERO
 var _sprinting := false
 var climbing := false         # on a ladder (City.ladders): W / S climb, Space jumps off backwards, no gravity, no firing
@@ -123,6 +127,39 @@ func take_damage(amount: float, from: Vector3 = Vector3.ZERO) -> void:
 		Game.player_died.emit()
 
 
+## A med kit is taken only when hurt and not already healing.
+func can_heal() -> bool:
+	return not Game.dead and heal_t <= 0.0 and health < Game.MAX_HEALTH
+
+
+func start_heal() -> void:
+	heal_t = HEAL_TIME
+	_healed = 0.0
+	Sfx.play(self, "bandage", -4.0)
+
+
+## 0..1 progress of the current kit (HUD bar).
+func heal_progress() -> float:
+	return 1.0 - heal_t / HEAL_TIME if heal_t > 0.0 else 0.0
+
+
+func _heal(delta: float) -> void:
+	if heal_t <= 0.0:
+		return
+	if Game.dead:
+		heal_t = 0.0
+		return
+	var step := minf(delta, heal_t)
+	heal_t -= step
+	var add := minf(HEAL_AMOUNT * step / HEAL_TIME, Game.MAX_HEALTH - health)
+	health += add
+	_healed += add
+	if heal_t <= 0.0:
+		weapons.notice = "+%d HEALTH" % int(round(_healed))
+		weapons.notice_t = 2.0
+		Sfx.play(self, "healed", -6.0)
+
+
 ## The wounded arm drips: a dark red spot on the floor every DRIP_SPACING metres walked (a standing player leaves one now and then).
 ## A ring of DRIP_MAX flat quads that share one mesh and one material, reused oldest first: no allocation after the first twelve.
 const DRIP_MAX := 12
@@ -187,6 +224,7 @@ func _physics_process(delta: float) -> void:
 	rotation.y = yaw
 	recoil_pitch = lerpf(recoil_pitch, 0.0, 1.0 - exp(-recoil_recover * delta))
 	recoil_yaw = lerpf(recoil_yaw, 0.0, 1.0 - exp(-recoil_recover * delta))
+	_heal(delta)
 
 	if Game.dead:
 		velocity.x = move_toward(velocity.x, 0.0, 12.0 * delta)

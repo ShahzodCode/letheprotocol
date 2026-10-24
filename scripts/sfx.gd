@@ -247,6 +247,15 @@ static func get_sound(id: String) -> AudioStreamWAV:
 				var t2 := maxf(0.0, t - 0.14)
 				var b := sin(TAU * 1318.5 * t2) * exp(-t2 * 6.0) * (1.0 if t >= 0.14 else 0.0)
 				return (a * 0.45 + b * 0.5 + sin(TAU * 2637.0 * t2) * exp(-t2 * 14.0) * 0.1))
+		"bandage":   # a med kit opened: a plastic latch click, then a dressing torn off its roll (rough noise with a rising rasp, 0.6 s)
+			s = _make(0.6, func(t: float) -> float:
+				var click := rng.randf_range(-1, 1) * exp(-t * 90.0) * 0.6
+				var t2 := maxf(0.0, t - 0.12)
+				var rip := rng.randf_range(-1, 1) * (0.5 + 0.5 * sin(TAU * (40.0 + 60.0 * t2) * t2)) * minf(1.0, t2 * 20.0) * exp(-t2 * 4.5) * (1.0 if t >= 0.12 else 0.0)
+				return click + rip * 0.4)
+		"healed":    # the heal done: one soft low bell with a quiet fifth above (0.6 s)
+			s = _make(0.6, func(t: float) -> float:
+				return (sin(TAU * 523.25 * t) * 0.4 + sin(TAU * 784.0 * t) * 0.18) * minf(1.0, t * 60.0) * exp(-t * 5.5))
 		"death":
 			s = _make(0.5, func(t: float) -> float:
 				return (sin(TAU * (130.0 - 160.0 * t) * t) * 0.8 + rng.randf_range(-1, 1) * 0.15) * exp(-t * 6.0))

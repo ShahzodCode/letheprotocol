@@ -83,7 +83,7 @@ static func capture(main) -> Checkpoint:
 	cp.civilians_lost = Game.civilians_lost
 	for pk in Game.pickups:
 		if is_instance_valid(pk):
-			cp.pickups.append({"is_grenade": pk.is_grenade, "is_ammo": pk.is_ammo, "weapon_id": pk.weapon_id, "ammo": pk.ammo,
+			cp.pickups.append({"is_medkit": pk.is_medkit, "is_grenade": pk.is_grenade, "is_ammo": pk.is_ammo, "weapon_id": pk.weapon_id, "ammo": pk.ammo,
 				"spare": (pk.spare as Array).duplicate() if pk.spare != null else null, "pos": pk.global_position, "t": pk._t, "keep": pk.keep})
 	return cp
 
@@ -131,7 +131,9 @@ func restore(main) -> void:
 		Civilian.spawn(main, pl, bd["pos"], int(bd["seed"]), bool(bd["child"])).lie_down()
 	for d in pickups:
 		var pk: Pickup
-		if bool(d["is_grenade"]):
+		if bool(d.get("is_medkit", false)):
+			pk = Pickup.spawn_medkit(main, d["pos"])
+		elif bool(d["is_grenade"]):
 			pk = Pickup.spawn_grenade(main, d["pos"])
 		elif bool(d["is_ammo"]):
 			pk = Pickup.spawn_ammo(main, d["pos"], d["weapon_id"], int(d["ammo"]))
@@ -142,6 +144,7 @@ func restore(main) -> void:
 		pk.keep = bool(d.get("keep", false))
 	# the player: view, health, loadout, counters
 	pl.health = health
+	pl.heal_t = 0.0
 	pl.yaw = yaw
 	pl.pitch = pitch
 	pl.rotation.y = yaw

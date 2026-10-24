@@ -52,6 +52,9 @@ var hit_kill := false
 var hit_head := false
 var hint_t := 14.0
 var _last_health := -1.0
+var _last_healing := false
+var heal_bar: ColorRect
+const HEAL_GREEN := Color(0.45, 0.95, 0.5)
 var debug_overlay: PerfOverlay
 var gpu_warning: Label
 
@@ -391,6 +394,12 @@ void fragment() {
 		health_blocks.append(b)
 	health_label = _label(hp, "HEALTH 100", 18, Color.WHITE)
 	health_label.position = Vector2(12, 6)
+	heal_bar = ColorRect.new()          # a med kit's progress under the blocks (Player.heal_t)
+	heal_bar.position = Vector2(12, 55)
+	heal_bar.size = Vector2(0, 3)
+	heal_bar.color = HEAL_GREEN
+	heal_bar.visible = false
+	hp.add_child(heal_bar)
 	arm_icon = _ArmIcon.new()
 	arm_icon.size = Vector2(48, 36)
 	arm_icon.position = Vector2(196, 2)
@@ -736,12 +745,19 @@ func _process(delta: float) -> void:
 	else:
 		reload_bg.visible = false
 
-	if player.health != _last_health:
+	var healing := player.heal_t > 0.0
+	if player.health != _last_health or healing != _last_healing:
 		_last_health = player.health
-		health_label.text = "HEALTH %d" % int(ceil(player.health))
+		_last_healing = healing
+		health_label.text = ("HEALING %d" if healing else "HEALTH %d") % int(ceil(player.health))
+		health_label.modulate = HEAL_GREEN if healing else Color.WHITE
 		var lit := int(ceil(player.health / 10.0))
+		var on := HEAL_GREEN if healing else (ACCENT if player.health > 30.0 else RED)
 		for i in 10:
-			health_blocks[i].color = (ACCENT if player.health > 30.0 else RED) if i < lit else Color(1, 1, 1, 0.1)
+			health_blocks[i].color = on if i < lit else Color(1, 1, 1, 0.1)
+	heal_bar.visible = healing
+	if healing:
+		heal_bar.size.x = 256.0 * player.heal_progress()
 	kills_label.text = "KILLS %d" % Game.kills
 	if arm_icon.visible != Game.arm_injured:
 		arm_icon.visible = Game.arm_injured
