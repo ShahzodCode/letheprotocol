@@ -54,6 +54,9 @@ var _ambience_t := 3.0
 var park_fight: ParkFight        # the ten guards at the lander (see ParkFight)
 var interiors: Interiors           # streams the enterable buildings in and out around the player
 var chase: ChaseFight            # the chase, the courtyard and the arm wound (see ChaseFight)
+var ship: LanderInterior         # the inside of the lander and the Commander (Chapter One X, see LanderInterior)
+var voice: Voice                 # the voiced lines (pre-rendered clips, see Voice)
+var home: HomeScene              # the mother, Mira and the soldiers in the apartment (Chapter One VI-VIII, see HomeScene)
 var _lookout_t := 0.0
 
 
@@ -83,6 +86,14 @@ func _ready() -> void:
 	chase = ChaseFight.new()
 	add_child(chase)
 	chase.setup(self)
+	voice = Voice.new()
+	add_child(voice)
+	ship = LanderInterior.new()
+	add_child(ship)
+	ship.setup(self)
+	home = HomeScene.new()
+	add_child(home)
+	home.setup(self)
 
 	Civilian.clock = 0.0
 	_crowd = AudioStreamPlayer.new()
@@ -159,9 +170,12 @@ func _spawn_city_enemies() -> void:
 
 
 func _spawn_enemy_at(p: Vector3, kind: String = "soldier", weapon: String = "") -> Enemy:
-	p.x = clampf(p.x, -City.IN_X + 4.0, City.IN_X - 4.0)
-	p.z = clampf(p.z, -City.IN_Z + 4.0, City.IN_Z - 4.0)
-	p.y = World.height_at(p.x, p.z) + 0.3 if p.y < 1.0 else p.y + 0.3        # a spot with a height (the balcony) keeps it
+	if p.y > LanderInterior.DEEP_Y * 0.5:
+		p.x = clampf(p.x, -City.IN_X + 4.0, City.IN_X - 4.0)
+		p.z = clampf(p.z, -City.IN_Z + 4.0, City.IN_Z - 4.0)
+		p.y = World.height_at(p.x, p.z) + 0.3 if p.y < 1.0 and p.y > -1.0 else p.y + 0.3        # a spot with a height (the balcony, the cellar) keeps it
+	else:
+		p.y += 0.3                           # inside the lander (built far below the city): the spot is exact
 	var e := Enemy.new()
 	e.setup(player, p, kind)
 	if weapon != "":
@@ -250,6 +264,12 @@ func _apply_role(e: Enemy) -> void:
 			e.grenade_drop = ChaseFight.STRAGGLER_GRENADES
 			e.stamina = minf(e.stamina, e.max_stamina * ChaseFight.STRAGGLER_STAMINA)
 		return
+	if role.begins_with("ship_"):
+		ship.apply_role(e, role)          # the soldiers inside the lander (LanderInterior)
+		return
+	if role.begins_with("home_"):
+		home.apply_role(e, role)          # the soldiers in the apartment and the cellar (HomeScene)
+		return
 	e.group = -1                  # alone: nobody shares anything with him
 	e.post = true
 	match String(story_roles[e.uid]):
@@ -316,7 +336,7 @@ func avenue_closeness() -> float:
 ## Far-off gunfire and explosions from a random direction every few seconds (more often and louder near the main avenue).
 func _update_ambience(delta: float) -> void:
 	_ambience_t -= delta
-	if _ambience_t > 0.0 or Game.sandbox:
+	if _ambience_t > 0.0 or Game.sandbox or ship.inside:
 		return
 	var k := avenue_closeness()
 	_ambience_t = lerpf(7.0, 2.2, k) * _rng.randf_range(0.6, 1.4)
@@ -467,6 +487,7 @@ func _objective_index(oid: String) -> int:
 ## The lookout objective starts (ChapterOne hook): the landing craft comes down over the park. The ten guards appear when it touches down.
 func begin_lookout() -> void:
 	_lookout_t = 0.0
+	ship.prebuild()                    # the inside of the craft is built now, out of sight, so that walking up the ramp does not stall
 	world.lander.begin_landing()
 	if world.far_landers_node != null:
 		world.far_landers_node.visible = true          # the other ships have settled in the squares: the lookout sees them
@@ -475,18 +496,32 @@ func begin_lookout() -> void:
 func _on_lander_touched_down() -> void:
 	if mission != null and not mission.finished and String(mission.active().get("id", "")) == "lookout":
 		park_fight.spawn_guards()
+		_send_exhausted()
+
+
+## The craft is down: the two exhausted soldiers (still bent over by the wall) start dragging themselves towards it, slowly.
+func _send_exhausted() -> void:
+	var goal := CityStory.exhausted_goal()
+	for e in Game.enemies:
+		var en := e as Enemy
+		if is_instance_valid(en) and en.state == Enemy.State.EXHAUSTED and String(story_roles.get(en.uid, "")) == "exhausted":
+			en.trudge_goal = goal
 
 
 ## After a checkpoint restore the craft and the guards' controller match the objective the player is back on.
 func _sync_story_world() -> void:
 	if mission == null or Game.sandbox or world.lander == null:
 		return
+	ship.sync()
+	voice.hush()
+	home.sync()
 	var li := _objective_index("lookout")
 	if li < 0:
 		return
 	_lookout_t = 0.0
 	if mission.index > li:
 		world.lander.land_now()
+		_send_exhausted()
 	else:
 		world.lander.hide_ship()
 		if mission.index == li:

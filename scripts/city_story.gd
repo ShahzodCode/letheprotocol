@@ -398,6 +398,15 @@ static func rest_spot() -> Dictionary:
 	return {}
 
 
+## Where the two exhausted soldiers drag themselves once the craft has landed: beside the guards' fan, north-west of the ramp foot.
+static func exhausted_goal() -> Vector3:
+	var foot := ramp_foot()
+	for off in [Vector3(-5.0, 0.0, -7.5), Vector3(-9.0, 0.0, -5.0), Vector3(-4.0, 0.0, -10.0), Vector3(-10.0, 0.0, -9.0)]:
+		if City.is_free(foot + off):
+			return foot + off
+	return foot + Vector3(-8.0, 0.0, -6.0)
+
+
 ## The ten guards at the foot of the ramp: two rows of five on an arc round it (the ramp points west, so the arc opens west), facing outwards.
 ## [{pos, face}]; nudged off props (benches, trees) by the navigation grid.
 static func guard_spots() -> Array:

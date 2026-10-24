@@ -53,6 +53,9 @@ var dead := false
 var won := false           # reached the goal house
 var paused := false
 var force_input := false   # tests: headless has no real mouse capture
+var frozen := false        # the Commander scene: the player's keys and mouse do nothing (has_focus() is false)
+var invulnerable := false  # the Commander scene: nothing can hurt the player
+var invisible := false     # cheat (pause menu): no soldier sees or hears the player
 var sandbox := false       # `-- --sandbox`: the sandbox mission (enemies respawn)
 var mission: Mission = null
 var has_checkpoint := false   # Main has saved a checkpoint (the death screen offers R = restart from it)
@@ -174,7 +177,7 @@ func _log_hitch(ms: float, now: int, write: bool = true) -> void:
 
 ## True while the game should react to mouse/keyboard play input (mouse captured, not paused).
 func has_focus() -> bool:
-	return force_input or Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED
+	return not frozen and (force_input or Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED)
 
 
 func reset_stats() -> void:
@@ -185,6 +188,9 @@ func reset_stats() -> void:
 	civilians_lost = 0
 	grenades = 0
 	arm_injured = false
+	frozen = false
+	invulnerable = false
+	invisible = false
 	dead = false
 	won = false
 	paused = false

@@ -110,7 +110,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func take_damage(amount: float, from: Vector3 = Vector3.ZERO) -> void:
-	if Game.dead or amount <= 0.0:
+	if Game.dead or Game.invulnerable or amount <= 0.0:
 		return
 	health = maxf(0.0, health - amount)
 	hurt_k = minf(1.0, hurt_k + 0.4 + amount / 40.0)

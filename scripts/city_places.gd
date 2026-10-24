@@ -191,11 +191,43 @@ static func _home() -> void:
 	_prop(Rect2(o.x + 9.0, o.y + 3.0, 1.6, 1.0), 0.0, 0.55, Color(0.45, 0.32, 0.2), "home")
 	_prop(Rect2(o.x + 11.4, o.y + 7.1, 2.4, 2.3), 0.0, 0.6, Color(0.7, 0.35, 0.35), "home")
 	_prop(Rect2(o.x + 0.2, o.y + 8.9, 2.6, 0.9), 0.0, 0.6, Color(0.9, 0.92, 0.94), "home")
+	_breakfast(o)
 	City.lights.append({"pos": Vector3(o.x + 7.0, 2.6, o.y + 5.0), "range": 14.0, "energy": 1.3, "color": Color(1.0, 0.92, 0.75)})
 	# warm lights on the street side so the house reads from the avenue
 	_decor(Vector3(hr.position.x - 0.05, 2.55, o.y + 5.0), Vector3(0.15, 0.25, 1.8), Color(1.0, 0.8, 0.4), true)
 	for wz in [o.y + 1.8, o.y + 8.4]:
 		_decor(Vector3(hr.position.x - 0.03, 1.5, wz), Vector3(0.08, 1.2, 1.8), Color(1.0, 0.85, 0.5), true)
+
+
+## "VI. The Basement": the kitchen exactly as they left it that morning: the plates in the sink, Mira's drawing on the table,
+## the father's empty chair (the east one, pushed back from the table).
+static func _breakfast(o: Vector2) -> void:
+	var wood := Color(0.52, 0.36, 0.22)
+	_prop(Rect2(o.x + 3.4, o.y + 1.4, 1.4, 1.0), 0.0, 0.75, wood, "home")
+	var chairs := [[4.1, 1.05, 0.0], [4.1, 2.75, PI], [3.05, 1.9, -PI * 0.5], [5.35, 1.9, PI * 0.5]]
+	for c in chairs:
+		var p := Vector3(o.x + float(c[0]), 0.0, o.y + float(c[1]))
+		var back := Vector3(sin(float(c[2])), 0.0, -cos(float(c[2]))) * 0.2           # the back rest on the side away from the table
+		_decor(p + Vector3(0, 0.45, 0), Vector3(0.42, 0.05, 0.42), wood.darkened(0.1))
+		var bsize := Vector3(0.42, 0.5, 0.05) if absf(back.z) > 0.1 else Vector3(0.05, 0.5, 0.42)
+		_decor(p + back + Vector3(0, 0.72, 0), bsize, wood.darkened(0.15))
+		for lx in [-0.17, 0.17]:
+			for lz in [-0.17, 0.17]:
+				_decor(p + Vector3(lx, 0.22, lz), Vector3(0.04, 0.44, 0.04), wood.darkened(0.3))
+	var top := 0.76
+	for pl in [[3.8, 1.75], [4.4, 2.05], [3.9, 2.15]]:                                # three breakfast plates (the fourth place is bare)
+		_decor(Vector3(o.x + float(pl[0]), top, o.y + float(pl[1])), Vector3(0.24, 0.02, 0.24), Color(0.95, 0.95, 0.92))
+	# Mira's drawing: a green tree, a yellow sun, four people
+	var dp := Vector3(o.x + 4.35, top, o.y + 1.65)
+	_decor(dp, Vector3(0.3, 0.006, 0.21), Color(0.97, 0.96, 0.9))
+	_decor(dp + Vector3(-0.07, 0.004, 0.01), Vector3(0.08, 0.004, 0.11), Color(0.25, 0.6, 0.25))
+	_decor(dp + Vector3(0.09, 0.004, -0.06), Vector3(0.05, 0.004, 0.05), Color(1.0, 0.82, 0.2))
+	for k in 4:
+		_decor(dp + Vector3(0.03 + 0.025 * k, 0.004, 0.05), Vector3(0.012, 0.004, 0.05), Color(0.2, 0.25, 0.55))
+	# the plates in the sink (the counter's west end)
+	for k in 3:
+		_decor(Vector3(o.x + 1.2, 1.02 + 0.025 * k, o.y + 0.5), Vector3(0.24, 0.02, 0.24), Color(0.93, 0.93, 0.9))
+	_decor(Vector3(o.x + 1.2, 1.005, o.y + 0.5), Vector3(0.6, 0.01, 0.45), Color(0.62, 0.66, 0.7))         # the sink
 
 
 static func _cellar() -> void:
@@ -446,4 +478,106 @@ static func street_trees() -> void:
 static func _old_block() -> void:
 	var fp := Rect2(37.0, -47.0, 9.5, 13.0)
 	CityWar.extra_clear.append(Rect2(46.0, -48.5, 5.0, 16.0))      # the fire escape stands on the street side: no tree, car or barricade there
-	City.buildings.append({"rect": fp, "boxes": [_bx(fp, 0.0, 14.0)], "nav_rects": [fp], "style": 0.1, "color": Color(0.82, 0.74, 0.6), "h": 14.0, "lookout_plot": true})
+	City.buildings.append({"rect": fp, "boxes": [_bx(fp, 0.0, 14.0)], "nav_rects": [fp], "style": 0.1, "color": Color(0.82, 0.74, 0.6), "h": 14.0, "lookout_plot": true,
+			"keep_clear": Rect2(37.0, -45.0, 3.6, 11.0)})          # no rooftop unit on the roof hatch of the hall (`lookout_hall`)
+
+
+## The top storey of the lookout building (the old block) as a hall for the sniper: the roof is now a 14 cm slab with a stair hatch at its west
+## end that leads down 3.6 m into the hall (floor 10.4, ceiling 13.86). The walls have real open windows exactly where the facade shader paints
+## its windows (cells of 2.8 m, 1.08 - 3.06 m above the storey line at 10.8), except where the fire escape runs along the wall. Desks under the
+## windows to rest a rifle on. Called after CityClimb.build (the escape and the parapet exist by then); the hall's way down is the hatch only.
+const LOOK_FLOOR := 10.4
+const LOOK_CEIL := 13.86
+const LOOK_WALL := 0.4
+const LOOK_STAIR_RUN := 7.0
+
+
+static func lookout_hall() -> void:
+	var b := {}
+	for o in City.buildings:
+		if o.has("lookout_plot") and o.has("lookout"):
+			b = o
+	if b.is_empty() or absf(float(b["h"]) - 14.0) > 0.01:
+		return
+	var fp: Rect2 = b["rect"]
+	var h: float = b["h"]
+	var t := LOOK_WALL
+	var y0 := LOOK_FLOOR
+	# the wall the fire escape runs along: no windows opposite its landings
+	var skip := [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]          # north, south, west, east: the escape's span along that wall
+	for e in City.escapes:
+		var er: Rect2 = e["rect"]
+		if not er.grow(0.6).intersects(fp):
+			continue
+		if er.end.y <= fp.position.y + 0.6:
+			skip[0] = Vector2(er.position.x, er.end.x)
+		elif er.position.y >= fp.end.y - 0.6:
+			skip[1] = Vector2(er.position.x, er.end.x)
+		elif er.end.x <= fp.position.x + 0.6:
+			skip[2] = Vector2(er.position.y, er.end.y)
+		elif er.position.x >= fp.end.x - 0.6:
+			skip[3] = Vector2(er.position.y, er.end.y)
+	var gn := _look_gaps(fp.position.x, fp.end.x, skip[0])
+	var gs := _look_gaps(fp.position.x, fp.end.x, skip[1])
+	var gw := _look_gaps(fp.position.y + t, fp.end.y - t, skip[2])
+	var ge := _look_gaps(fp.position.y + t, fp.end.y - t, skip[3])
+	var north := _pierced(fp.position.y + t * 0.5, fp.position.x, fp.end.x, t, true, gn, y0, h, 1.48, 3.46)
+	var south := _pierced(fp.end.y - t * 0.5, fp.position.x, fp.end.x, t, true, gs, y0, h, 1.48, 3.46)
+	var west := _pierced(fp.position.x + t * 0.5, fp.position.y + t, fp.end.y - t, t, false, gw, y0, h, 1.48, 3.46)
+	var east := _pierced(fp.end.x - t * 0.5, fp.position.y + t, fp.end.y - t, t, false, ge, y0, h, 1.48, 3.46)
+	var boxes: Array = [_bx(fp, 0.0, y0)]                                                           # everything under the hall stays solid
+	for walls in [north, south, west, east]:
+		boxes.append_array(walls)
+	var top_z := fp.end.y - 2.2                                                                     # the stair goes down northwards from the south end of the hatch
+	var hole := Rect2(fp.position.x + t + 0.2, top_z - LOOK_STAIR_RUN - 0.6, 2.2, LOOK_STAIR_RUN + 0.6)
+	for piece in cut(fp, [hole]):                                                                   # the roof slab, open over the stair
+		boxes.append(_bx(piece, LOOK_CEIL, h))
+	b["boxes"] = boxes
+	_stairs(Vector3(hole.get_center().x, h, top_z), Vector3(hole.get_center().x, y0, top_z - LOOK_STAIR_RUN), 2.0, CONCRETE)
+	# linings on the inside of the walls (the facade shader would paint windows on the bare inner faces), cut like the walls
+	for w in north:
+		var r: Rect2 = w["rect"]
+		if float(w["y0"]) < LOOK_CEIL:
+			_liner(Rect2(r.position.x, r.end.y, r.size.x, 0.06), float(w["y0"]), minf(float(w["y1"]), LOOK_CEIL), INTERIOR)
+	for w in south:
+		var r: Rect2 = w["rect"]
+		if float(w["y0"]) < LOOK_CEIL:
+			_liner(Rect2(r.position.x, r.position.y - 0.06, r.size.x, 0.06), float(w["y0"]), minf(float(w["y1"]), LOOK_CEIL), INTERIOR)
+	for w in west:
+		var r: Rect2 = w["rect"]
+		if float(w["y0"]) < LOOK_CEIL:
+			_liner(Rect2(r.end.x, r.position.y, 0.06, r.size.y), float(w["y0"]), minf(float(w["y1"]), LOOK_CEIL), INTERIOR)
+	for w in east:
+		var r: Rect2 = w["rect"]
+		if float(w["y0"]) < LOOK_CEIL:
+			_liner(Rect2(r.position.x - 0.06, r.position.y, 0.06, r.size.y), float(w["y0"]), minf(float(w["y1"]), LOOK_CEIL), INTERIOR)
+	_liner(fp.grow(-t), y0, y0 + 0.03, Color(0.5, 0.42, 0.35))                                      # floor
+	# desks under the east and south windows, clear of the stair
+	var keep := hole.grow(0.5)
+	for g in ge:
+		var d := Rect2(fp.end.x - t - 0.7, (float(g[0]) + float(g[1])) * 0.5 - 1.2, 0.7, 2.4)
+		if not d.intersects(keep):
+			_prop(d, y0, y0 + 0.9, Color(0.5, 0.42, 0.3), "")
+	for g in gs:
+		var d2 := Rect2((float(g[0]) + float(g[1])) * 0.5 - 1.2, fp.end.y - t - 0.7, 2.4, 0.7)
+		if not d2.intersects(keep):
+			_prop(d2, y0, y0 + 0.9, Color(0.5, 0.42, 0.3), "")
+	var c := fp.get_center()
+	City.lights.append({"pos": Vector3(c.x, y0 + 2.8, c.y), "range": 14.0, "energy": 0.8, "color": Color(1.0, 0.93, 0.78)})
+
+
+## Window openings along a wall from lo to hi: the facade shader's windows (2.8 m cells, window from 0.56 to 2.24 m inside the cell), none
+## within 0.9 m of the ends and none facing the escape (`skip` = its span along the wall, y > x).
+static func _look_gaps(lo: float, hi: float, skip: Vector2) -> Array:
+	var out: Array = []
+	var k := int(floorf(lo / 2.8))
+	while float(k) * 2.8 < hi:
+		var a := float(k) * 2.8 + 0.56
+		var e := a + 1.68
+		k += 1
+		if a < lo + 0.9 or e > hi - 0.9:
+			continue
+		if skip.y > skip.x and a < skip.y + 0.3 and e > skip.x - 0.3:
+			continue
+		out.append([a, e])
+	return out

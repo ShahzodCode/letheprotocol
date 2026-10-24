@@ -203,6 +203,7 @@ static func generate(seed_value: int = 2077) -> void:
 		CityClimb.plan(seed_value)
 		CityBuildings.dress(seed_value)
 		CityClimb.build(seed_value)
+		CityPlaces.lookout_hall()                   # the sniper hall under the lookout roof (needs the fire escape CityClimb just built)
 		var road_rng := RandomNumberGenerator.new()
 		road_rng.seed = seed_value + 31
 		CityRoads.build(road_rng)
@@ -751,6 +752,30 @@ static func interior_layer(i: int, grid: Dictionary) -> void:
 		_live.erase(i)
 	elif not _live.has(i):
 		_live.append(i)
+
+
+## A stand-alone navigation layer that is not joined to the street grid (the lander's inside, built far below the city by LanderInterior):
+## `rect` in plan, `y_floor` the floor height. Returns its index; remove_story_layer() takes it out again.
+static func add_story_layer(lname: String, rect: Rect2, y_floor: float, grid: Dictionary) -> int:
+	layers.append({"name": lname, "rect": rect, "ymin": y_floor - 2.0, "ymax": y_floor + 6.0, "y": y_floor, "parent": -1,
+		"outer": Vector3(1.0e6, 0.0, 1.0e6), "via": [], "inner": Vector3(1.0e6, 0.0, 1.0e6), "grid": grid})
+	_live.append(layers.size() - 1)
+	return layers.size() - 1
+
+
+static func remove_story_layer(i: int) -> void:
+	if i >= 0 and i < layers.size():
+		_live.erase(i)
+		layers[i]["grid"] = {}
+
+
+## The nav-grid helpers LanderInterior needs (the grid functions are static and private to City by name only).
+static func story_grid(rect: Rect2, cell: float) -> Dictionary:
+	return _new_grid(rect, cell, true)
+
+
+static func story_set(g: Dictionary, r: Rect2, margin: float, solid: bool) -> void:
+	_g_set(g, r, margin, solid)
 
 
 static func _grid_of(l: int) -> Dictionary:

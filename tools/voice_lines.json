@@ -1,0 +1,35 @@
+{
+  "styles": {
+    "soldier":   {"voice": "Microsoft Irina Desktop", "lang": "ru-RU", "pitch": "-8%",  "rate": "+8%"},
+    "intercom":  {"voice": "Microsoft Irina Desktop", "lang": "ru-RU", "pitch": "-15%", "rate": "-8%"},
+    "commander": {"voice": "Microsoft Zira Desktop",  "lang": "en-US", "pitch": "-45%", "rate": "-5%"},
+    "guard":     {"voice": "Microsoft Zira Desktop",  "lang": "en-US", "pitch": "+0%",  "rate": "+5%"}
+  },
+  "lines": [
+    {"style": "soldier", "text": "SNIPER! GET DOWN!", "say": "Снайпер! Ложись!"},
+    {"style": "soldier", "text": "WHERE IS HE?! WHERE IS HE?!", "say": "Где он?! Где он?!"},
+    {"style": "soldier", "text": "CHECK THE ROOFS!", "say": "Проверьте крыши!"},
+    {"style": "soldier", "text": "THE BALCONY! HE IS ON THE BALCONY!", "say": "Балкон! Он на балконе!"},
+    {"style": "soldier", "text": "THEY ARE COMING! AFTER HIM!", "say": "Вперёд! За ним!"},
+    {"style": "soldier", "text": "FALL BACK! THE COURTYARD! BACK TO BACK!", "say": "Отходим! Во двор! Спина к спине!"},
+    {"style": "soldier", "text": "SPLIT UP! CHECK THE ALLEYS!", "say": "Разделиться! Проверить переулки!"},
+    {"style": "soldier", "text": "Close up! Watch the corners!", "say": "Сомкнуться! Следите за углами!"},
+    {"style": "soldier", "text": "Back to back! He is close!", "say": "Спина к спине! Он рядом!"},
+    {"style": "soldier", "text": "Eyes open, check your sector!", "say": "Глаза открыть, следите за сектором!"},
+    {"style": "soldier", "text": "Hold the line, don't let him flank us!", "say": "Держать строй, не дайте ему обойти!"},
+    {"style": "soldier", "text": "Stay tight! Shoot anything that moves!", "say": "Не расходиться! Стрелять во всё, что движется!"},
+    {"style": "soldier", "text": "He's picking us off, keep together!", "say": "Он выбивает нас по одному, держитесь вместе!"},
+    {"style": "soldier", "text": "Watch the roofs!", "say": "Следите за крышами!"},
+    {"style": "soldier", "text": "Eyes up! Check the roof edges!", "say": "Смотреть вверх! Проверить края крыш!"},
+    {"style": "soldier", "text": "Nobody leaves this circle!", "say": "Из круга никому не выходить!"},
+    {"style": "soldier", "text": "He is up there somewhere, hold!", "say": "Он где-то наверху, держаться!"},
+    {"style": "soldier", "text": "Cover your sector, shoot anything that shows!", "say": "Прикрывайте сектор, стреляйте во всё, что появится!"},
+    {"style": "intercom", "text": "INTRUDER ON BOARD. ALL DECKS. SEAL THE SHIP.", "say": "Нарушитель на борту. Всем палубам. Закрыть корабль."},
+    {"style": "guard", "text": "CITY GUARD: THE VEIL HAS FAILED. ALL CITIZENS, GO HOME AND STAY INDOORS.", "say": "The Veil has failed. All citizens, go home and stay indoors."},
+    {"style": "commander", "text": "@COMMANDER: NO. YOU ARE FAR TOO INTERESTING TO WASTE.", "say": "No. You are far too interesting to waste."},
+    {"style": "commander", "text": "@COMMANDER: TAKE HIM ALIVE. PUT HIM IN A CELL.", "say": "Take him alive. Put him in a cell."}
+  ],
+  "commander_count_rest": "of my soldiers, in a single morning. Killed by a boy with one good arm.",
+  "commander_count_many": "So many of my soldiers, in a single morning. Killed by a boy with one good arm.",
+  "commander_count_max": 60
+}

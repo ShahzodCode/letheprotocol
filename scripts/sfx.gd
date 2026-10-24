@@ -250,6 +250,68 @@ static func get_sound(id: String) -> AudioStreamWAV:
 		"death":
 			s = _make(0.5, func(t: float) -> float:
 				return (sin(TAU * (130.0 - 160.0 * t) * t) * 0.8 + rng.randf_range(-1, 1) * 0.15) * exp(-t * 6.0))
+		"alarm":   # the lander's siren: a square-ish tone swinging between 500 and 900 Hz, 1.6 s, loops (whole cycles)
+			s = _make(1.6, func(t: float) -> float:
+				var w := TAU / 1.6
+				var ph := TAU * (700.0 * t + 200.0 * (1.0 - cos(w * t)) / w)
+				return (signf(sin(ph)) * 0.22 + sin(ph) * 0.3 + sin(ph * 2.0) * 0.08) * 0.8)
+			s.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			s.loop_begin = 0
+			s.loop_end = int(1.6 * RATE)
+		"slam":    # a bulkhead door shutting: a hard metal knock and a low thud
+			var lps := 0.0
+			s = _make(0.7, func(t: float) -> float:
+				lps += (rng.randf_range(-1, 1) - lps) * 0.3
+				var knock := lps * exp(-t * 26.0)
+				var thud := sin(TAU * (95.0 - 40.0 * minf(t, 0.4)) * t) * exp(-t * 9.0)
+				var ring := (sin(TAU * 410.0 * t) + sin(TAU * 655.0 * t) * 0.6) * exp(-t * 14.0) * 0.25
+				return (knock * 0.9 + thud * 0.9 + ring) * 0.85)
+		"laugh":   # a deep slow laugh: four voiced "ha" pulses (a falling 80-95 Hz buzz shaped by two vowel formants), 1.7 s
+			var pulses := [0.0, 0.38, 0.74, 1.08]
+			s = _make(1.7, func(t: float) -> float:
+				var out := 0.0
+				for pi in 4:
+					var dt: float = t - float(pulses[pi])
+					if dt < 0.0 or dt > 0.3:
+						continue
+					var f0 := (96.0 - 14.0 * float(pi)) * (1.0 - 0.18 * dt)
+					var env := sin(PI * clampf(dt / 0.3, 0.0, 1.0))
+					env = env * env
+					for k in range(1, 15):
+						var fk := f0 * float(k)
+						var wgt := exp(-pow((fk - 650.0) / 260.0, 2.0)) + 0.6 * exp(-pow((fk - 1150.0) / 320.0, 2.0)) + 0.35 / float(k)
+						out += sin(TAU * fk * dt) * wgt * env
+				return out * 0.16)
+		"knock":   # knuckles on a wooden door below the floor: three dull, muffled knocks (1.1 s)
+			var lpk := 0.0
+			s = _make(1.1, func(t: float) -> float:
+				lpk += (rng.randf_range(-1, 1) - lpk) * 0.12
+				var out := 0.0
+				for k in 3:
+					var dt := t - 0.3 * float(k)
+					if dt >= 0.0:
+						out += (sin(TAU * 140.0 * dt) * 0.8 + lpk * 2.0) * exp(-dt * 40.0)
+				return out * 0.8)
+		"crash":   # the front door kicked in: a splintering crack, a heavy thud and the frame rattling (1.2 s)
+			var lpc := 0.0
+			s = _make(1.2, func(t: float) -> float:
+				var n := rng.randf_range(-1, 1)
+				lpc += (n - lpc) * 0.45
+				var crack := n * exp(-t * 30.0) * 0.8
+				var splinter := lpc * exp(-t * 6.0) * (0.5 + 0.5 * sin(TAU * 23.0 * t)) * 0.5
+				var thud := sin(TAU * (80.0 - 30.0 * minf(t, 0.5)) * t) * exp(-t * 7.0)
+				var rattle := lpc * maxf(0.0, sin(TAU * 11.0 * t)) * exp(-maxf(t - 0.3, 0.0) * 5.0) * (1.0 if t > 0.3 else 0.0) * 0.4
+				return (crack + splinter + thud + rattle) * 0.9)
+		"boots":   # heavy boots crossing the floor overhead: six low, muffled thuds (2.4 s)
+			var lpb := 0.0
+			s = _make(2.4, func(t: float) -> float:
+				lpb += (rng.randf_range(-1, 1) - lpb) * 0.08
+				var out := 0.0
+				for k in 6:
+					var dt := t - (0.12 + 0.38 * float(k) + 0.05 * float(k % 2))
+					if dt >= 0.0:
+						out += (sin(TAU * 62.0 * dt) + lpb * 1.5) * exp(-dt * 22.0)
+				return out * 0.7)
 		_:
 			s = _make(0.05, func(t: float) -> float: return 0.0)
 	_cache[id] = s

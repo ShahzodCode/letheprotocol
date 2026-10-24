@@ -358,6 +358,8 @@ static func _roof_units(b: Dictionary, rng: RandomNumberGenerator, y: float, sol
 		if clash:
 			continue
 		placed.append(rect)
+		if b.has("keep_clear") and rect.grow(0.4).intersects(b["keep_clear"]):          # a roof hatch lies here (the lookout's hall)
+			continue
 		match kind:
 			0, 1:
 				Scn.box(Vector3(p.x, y + 0.5, p.y), Vector3(1.6, 1.0, 1.2), Color(0.62, 0.64, 0.66))
@@ -378,6 +380,8 @@ static func _roof_units(b: Dictionary, rng: RandomNumberGenerator, y: float, sol
 					Scn.solid(Vector3(p.x, y + 1.3, p.y), Vector3(3.0, 2.6, 2.8))
 	if rng.randf() < 0.6:
 		var ap := Vector2(rng.randf_range(r.position.x, r.end.x), rng.randf_range(r.position.y, r.end.y))
+		if b.has("keep_clear") and (b["keep_clear"] as Rect2).has_point(ap):
+			return
 		Scn.between("cyl", Vector3(ap.x, y, ap.y), Vector3(ap.x, y + rng.randf_range(5.0, 8.0), ap.y), 0.12, Color(0.3, 0.3, 0.32))
 
 

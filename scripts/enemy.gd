@@ -67,6 +67,7 @@ const ANIM_MID := 70.0           # ...15 Hz...
 const ANIM_FAR := 120.0          # ...8 Hz
 static var NO_ARMOUR := OS.get_environment("LETHE_NOARMOUR") != ""           # A/B switch: the invader armour kit (InvaderArmour) off
 static var ANIM_LOD_OFF := OS.get_environment("LETHE_NOANIMLOD") != ""      # A/B switch for the perf tools
+const RUN_RAMP := 0.9             # seconds from standing to full speed (the length of the "start_run" clip): the run-up of the clip models
 const ALERT_TIME := 0.6
 const GROUP_ALERT_COUNT := 3      # soldiers of one group that must notice the player on their own before the others are told
 const KNOCK_DECAY := 6.0
@@ -87,7 +88,8 @@ const LEAN_GAP := 0.65              # he stops this far from the wall (body cent
 const BODY_CAP := 60                # dead bodies stay in the world; the oldest go first
 const EXHAUSTED_REACT := 2.0        # a gasping soldier sitting against a wall needs this long to react once he notices the player (he can be knifed meanwhile, even from the front)
 const EXHAUSTED_STAMINA := 6.0      # his stamina while he sits: he pants loudly, and when he gets up he cannot run for long
-const SIT_HIT_SCALE := 0.62         # hit boxes squashed while he sits (static boxes only: clip models' boxes follow the bones)
+const SIT_HIT_SCALE := 0.88         # hit boxes squashed while an exhausted soldier is bent over (static boxes only: clip models' boxes follow the bones)
+const TRUDGE_SPEED := 0.85          # an exhausted soldier drags himself along at this speed (m/s)
 const TAKEDOWN_STRUGGLE := 0.55     # seconds the victim of a takedown thrashes before the death clip takes him down
 const SUSPECT_LOOK_TIME := 8.0      # at the body: looks around this long...
 const SUSPECT_SEARCH_TIME := 15.0   # ...then searches nearby points this long, then goes back to wandering
@@ -141,6 +143,10 @@ var home := Vector3.ZERO
 var wander_target := Vector3.ZERO
 var wait_t := 0.0
 var alert_t := 0.0
+var _sitting := false             # the M4 soldier sits against a wall (posed from code, see `_set_sitting`)
+var _rifle_up := false           # clip models: the rifle is raised (the "aim_up" clip has played); lowered again with "aim_down" when the hunt is over
+var _pose_hold := 0.0             # seconds he stands still while the rifle comes down
+var _ramp_t := -1.0               # seconds into the run-up (< 0: at rest, the next run starts with one; >= RUN_RAMP: at full speed)
 var attack_t := 0.0
 var cooldown := 0.0
 var lost_t := 0.0
@@ -196,6 +202,7 @@ var lean_dist := INF
 var post := false                 # story soldier who stands at his post while calm (no wandering), facing `post_facing`
 var post_facing := 0.0
 var lazy_alert := 0.0             # extra seconds before he reacts once he notices the player (the grinning lone soldier)
+var trudge_goal := Vector3.INF        # EXHAUSTED: where he drags himself to (INF = he stands bent over, heaving, where he is)
 var exh_notice := -1.0            # EXHAUSTED: seconds since he noticed the player (-1 = has not); at EXHAUSTED_REACT he gets up and hunts
 var _idle_pose_t := 0.0
 var _sense_t := 0.0
@@ -231,6 +238,8 @@ var _roof_t := 0.0
 var pace := 1.0                  # multiplies the chase speed (bunching at corners)
 var fatigue := 1.0                # multiplies the stamina drain of running (the two stragglers of the chase)
 var damage_scale := 1.0           # multiplies the damage he takes
+var passive := false              # the Commander scene (LanderInterior): he never notices, wakes or answers a shot; he only turns to the player (set `state` ALERT for the raised rifle)
+var scripted_aim := Vector3.INF   # passive only: he turns to this point instead of the player (the soldier in the cellar, HomeScene)
 var grenade_drop := -1            # >= 0: he drops exactly this many grenades (the stragglers); -1 = the random drop of his kind
 var straggler := false            # a winded straggler can be knifed from behind even though he hunts
 var hold_walk_max := 8.0          # HOLD phase 0: seconds he may take to reach his place before he holds where he stands
@@ -382,7 +391,7 @@ func _build_model() -> void:
 	head_node = Node3D.new()
 	head_node.position = Vector3(0, 1.63, 0)
 	tilt.add_child(head_node)
-	model = CharModel.make(MODEL_OF[kind], 1.75)
+	model = CharModel.make(MODEL_OF[kind], 1.75, "", kind == "blade")          # the blade fighter has no rifle: he keeps the rig's own clips
 	tilt.add_child(model)
 	if TINT.has(kind):
 		_tint(model.body, TINT[kind])
@@ -397,7 +406,7 @@ func _build_model() -> void:
 		muzzle = Node3D.new()
 		muzzle.position = GunModels.muzzle(weapon_id)
 		gm.add_child(muzzle)
-	if model.model_id == "soldier":
+	if model.player == null:
 		tilt.add_child(gun)          # no usable animation: arms and legs are posed from code (_animate_soldier)
 		gun.position = Vector3(0.1, 1.15, -0.3)
 	else:
@@ -503,6 +512,8 @@ func take_hit(damage: float, part: String, impulse: Vector3, point: Vector3) -> 
 
 
 func _aggravate(own: bool = true) -> void:
+	if passive:
+		return
 	if state == State.EXHAUSTED:
 		_get_up()
 	if state == State.WANDER or state == State.SUSPICIOUS:
@@ -511,6 +522,9 @@ func _aggravate(own: bool = true) -> void:
 		burst_left = 0
 		state = State.ALERT
 		alert_t = ALERT_TIME * _rng.randf_range(0.6, 1.2) + lazy_alert
+		_pose_hold = 0.0
+		if model != null and model.has_anim("aim_up"):          # long enough to raise the rifle before he runs
+			alert_t = maxf(alert_t, model.clip_length("aim_up") * 0.95)
 		noticed_self = own
 		if player != null:
 			last_known = player.global_position
@@ -520,6 +534,8 @@ func _aggravate(own: bool = true) -> void:
 
 
 func _on_gunshot(pos: Vector3, loudness: float) -> void:
+	if passive or Game.invisible:
+		return
 	if state == State.EXHAUSTED:
 		if exh_notice < 0.0 and global_position.distance_to(pos) < loudness * 0.45:
 			exh_notice = 0.5        # he takes it in slowly
@@ -611,14 +627,22 @@ func _die(impulse: Vector3, silent: bool = false) -> void:
 	var back := flat.dot(fwd) < 0.0
 	gun.visible = false                  # the weapon drops as a pick-up
 	if model.has_anim("death"):
-		# the clip falls backwards: turn him so his head ends up along the shot
-		model.rotation.y = (atan2(flat.x, flat.z) - rig.rotation.y) if flat.length() > 0.1 else 0.0
+		# the old clips fall backwards: turn him so his head ends up along the shot; the new ones fall forward, the way he faces
+		var dclip := "death"
+		if model.new_clips:
+			model.rotation.y = 0.0
+			var run_v := Vector3(velocity.x, 0.0, velocity.z)
+			if run_v.length() > RUN_ANIM_SPEED and _td_t <= 0.0 and model.has_anim("die_run"):
+				dclip = "die_run"
+				knock += run_v * 0.9          # the fall carries on in the direction he ran (the clips' own travel is taken out)
+		else:
+			model.rotation.y = (atan2(flat.x, flat.z) - rig.rotation.y) if flat.length() > 0.1 else 0.0
 		if model.player != null:
 			model.player.active = true       # a calm far soldier had his animation paused: the death must play
 		if _td_t > 0.0:
 			model.layer.takedown(1.0, _td_sign)      # a takedown: he struggles first, `_dead_step` starts the fall
 		else:
-			model.play_once("death", 1.0, 0.12)
+			model.play_once(dclip, 1.0, 0.12)
 	else:
 		if model.model_id == "soldier":
 			_pose_limp()
@@ -722,12 +746,14 @@ func _chest() -> Vector3:
 
 
 func _los_to_player() -> bool:
+	if Game.invisible:
+		return false          # the cheat: no soldier can see the player
 	var q := PhysicsRayQueryParameters3D.create(_eye_pos(), _chest(), Game.L_WORLD)
 	return get_world_3d().direct_space_state.intersect_ray(q).is_empty()
 
 
 func _notices_player() -> bool:
-	if player == null or Game.dead:
+	if player == null or Game.dead or Game.invisible:
 		return false
 	var chest := _chest()
 	var to := chest - _eye_pos()
@@ -796,7 +822,7 @@ func _physics_process(delta: float) -> void:
 		# far calm soldiers do not need their skeleton animated
 		var d2a := global_position.distance_squared_to(player.global_position)
 		var in_view := d2a < 2500.0 and player.camera.is_position_in_frustum(global_position + Vector3(0, 1.0, 0))
-		model.player.active = (state != State.WANDER and d2a < 10000.0) or in_view
+		model.player.active = ((state != State.WANDER and d2a < 10000.0) or in_view) and not _sitting
 		_anim_iv = _anim_interval(d2a, in_view)
 		model.lod_tick(delta, _anim_iv)
 		if not model.armour.is_empty():
@@ -828,7 +854,9 @@ func _physics_process(delta: float) -> void:
 	else:
 		match state:
 			State.WANDER:
-				if _sense_due(delta) and _notices_player():
+				if passive:
+					_face(to_player if scripted_aim == Vector3.INF else scripted_aim - global_position, delta, 6.0)
+				elif _sense_due(delta) and _notices_player():
 					_aggravate(true)
 					_alert_group()
 				elif _check_bodies(delta):
@@ -857,8 +885,8 @@ func _physics_process(delta: float) -> void:
 							anim_speed = walk_speed
 							turn_rate = 3.0
 			State.ALERT:
-				_face(to_player, delta, 10.0)
-				alert_t -= delta
+				_face(to_player if not passive or scripted_aim == Vector3.INF else scripted_aim - global_position, delta, 10.0)
+				alert_t = 99.0 if passive else alert_t - delta
 				if alert_t <= 0.0:
 					state = State.CHASE
 					lost_t = 0.0
@@ -876,7 +904,7 @@ func _physics_process(delta: float) -> void:
 				if seen_delay > 0.0:           # slow to take in what he sees (the alleys of the chase: ChaseFight sets this)
 					_seen_acc = _seen_acc + delta if seen_now else 0.0
 					seen_now = seen_now and _seen_acc >= seen_delay
-				if knows_player and not Game.dead:
+				if knows_player and not Game.dead and not Game.invisible:
 					seen_now = true
 				if seen_now:
 					last_known = player.global_position
@@ -955,10 +983,24 @@ func _physics_process(delta: float) -> void:
 				want = hres[0]
 				anim_speed = hres[1]
 			State.EXHAUSTED:
-				# sits against a wall, gasping: slow to notice anyone, and once he has, EXHAUSTED_REACT seconds to get up
+				# gasping, bent over: slow to notice anyone, and once he has, EXHAUSTED_REACT seconds to get his rifle up; meanwhile he trudges to 	rudge_goal
 				if exh_notice < 0.0:
 					if _sense_due(delta) and _notices_player():
 						exh_notice = 0.0
+					elif trudge_goal != Vector3.INF:
+						var to_goal := trudge_goal - global_position
+						to_goal.y = 0.0
+						if to_goal.length() < 2.0:
+							trudge_goal = Vector3.INF
+						else:
+							var tdir := _nav_dir(trudge_goal, delta, false)
+							if tdir != Vector3.ZERO:
+								want = tdir * TRUDGE_SPEED
+								_face(tdir, delta, 2.0)
+								anim_speed = TRUDGE_SPEED
+								turn_rate = 2.0
+					else:
+						_face(Vector3(-sin(post_facing), 0, -cos(post_facing)), delta, 1.5)
 				else:
 					exh_notice += delta
 					if exh_notice >= EXHAUSTED_REACT:
@@ -968,6 +1010,19 @@ func _physics_process(delta: float) -> void:
 	want = _stamina_step(delta, want)
 	if winded_t > 0.0:
 		anim_speed = 0.0
+	if _pose_hold > 0.0:                    # the rifle is coming down: he stands for it
+		_pose_hold -= delta
+		if state == State.WANDER or state == State.SUSPICIOUS:
+			want = Vector3.ZERO
+			anim_speed = 0.0
+	if model.has_anim("start_run"):         # a run from standing starts slowly and gains speed over RUN_RAMP (the "start_run" clip plays meanwhile)
+		if state != State.CHASE or want == Vector3.ZERO:
+			_ramp_t = -1.0
+		elif _ramp_t < 0.0:
+			_ramp_t = 0.0 if Vector2(velocity.x, velocity.z).length() < 1.2 else RUN_RAMP
+		if _ramp_t >= 0.0 and _ramp_t < RUN_RAMP:
+			_ramp_t += delta
+			want *= lerpf(0.2, 1.0, pow(clampf(_ramp_t / RUN_RAMP, 0.0, 1.0), 1.5))
 
 	# ---- physics ----
 	# A calm soldier standing still on the ground (a guard at his post, a sitter) needs no physics step: move_and_slide is the dearest thing a
@@ -1106,8 +1161,8 @@ func vision_fov() -> float:
 ## Takes the desired velocity, returns the one to use.
 func _stamina_step(delta: float, want: Vector3) -> Vector3:
 	if state == State.EXHAUSTED:
-		stamina = minf(stamina, EXHAUSTED_STAMINA)         # he sits and heaves: no rest gets him back on his feet
-		return Vector3.ZERO
+		stamina = minf(stamina, EXHAUSTED_STAMINA)         # he heaves: no rest gets him back to a run
+		return want
 	if winded_t > 0.0:
 		winded_t -= delta
 		stamina = minf(max_stamina, stamina + STAMINA_REGAIN_WINDED * delta)
@@ -1422,15 +1477,16 @@ func set_weapon(id: String) -> void:
 ## Nothing about him moves: calm (waiting at a post or sitting), no steps, no flinch, nobody to shoot at, rifle not spinning.
 func _pose_is_idle(speed: float) -> bool:
 	return (state == State.WANDER or state == State.EXHAUSTED) and speed < 0.2 and not spin_rifle and flinch < 0.01 and winded_t <= 0.0 \
-		and civ_target == null and attack_t <= 0.0 and not reloading and stun <= 0.0
+		and civ_target == null and attack_t <= 0.0 and not reloading and stun <= 0.0 and not _rifle_up and _pose_hold <= 0.0
 
 
 ## The point the knife aims at (the chest: lower while he sits).
 func takedown_point() -> Vector3:
-	return global_position + Vector3(0, (0.68 if state == State.EXHAUSTED else 1.1) * body_scale, 0)
+	return global_position + Vector3(0, (0.95 if state == State.EXHAUSTED else 1.1) * body_scale, 0)
 
 
-## Story soldier: sits on the ground against a wall facing `face` (a yaw), gasping, helmet off (see `remove_helmet`). Call after add_child.
+## Story soldier: stands bent over, gasping, facing `face` (a yaw), helmet off (see `remove_helmet`), until `trudge_goal` is set and he drags himself
+## there. Call after add_child.
 func sit_down(face: float) -> void:
 	state = State.EXHAUSTED
 	post = true
@@ -1439,7 +1495,7 @@ func sit_down(face: float) -> void:
 	rig.rotation.y = face
 	stamina = EXHAUSTED_STAMINA
 	exh_notice = -1.0
-	hit_root.scale.y = SIT_HIT_SCALE
+	trudge_goal = Vector3.INF
 	nav_goal = Vector3.INF
 
 
@@ -1537,7 +1593,7 @@ func _shoot_step(delta: float, to_player: Vector3, dist: float) -> Array:
 	var los := _los_to_player()
 	_face(to_player, delta, 10.0 if not charging else 14.0)
 	seen_now = los
-	if los or knows_player:
+	if los or (knows_player and not Game.invisible):
 		last_known = player.global_position
 		unseen_t = 0.0
 	else:
@@ -1739,24 +1795,42 @@ func _bolt(from: Vector3, to: Vector3) -> void:
 
 func _animate(delta: float, speed: float) -> void:
 	var aiming := state == State.SHOOT or (state == State.HOLD and hold_phase == 1 and ranged) or (state == State.WANDER and civ_target != null and ranged)
-	if model.model_id == "soldier":
+	# the M4 soldier plays clips like the others, except sitting against a wall: that pose is still made from code (his rifle goes across his knees)
+	var sit := false          # (the seated pose looked like a corpse: exhausted soldiers trudge bent over instead; _set_sitting is unused)
+	if sit != _sitting:
+		_set_sitting(sit)
+	if model.player == null or sit:
 		_animate_soldier(delta, speed, aiming)
 	else:
 		_animate_clips(delta, speed, aiming)
-	var cross := model.model_id != "soldier"
+	var cross := model.player != null
 	# clip models answer a hit through the bones (PoseLayer); the soldier without clips tips his whole body
 	tilt.rotation.x = (0.16 if speed > RUN_ANIM_SPEED and cross else (0.24 if speed > RUN_ANIM_SPEED else 0.0)) - (flinch * 0.25 if model.layer == null else 0.0)
 	hit_root.scale.y = lerpf(hit_root.scale.y, SIT_HIT_SCALE if state == State.EXHAUSTED else (0.74 if (kind == "marksman" and _aim_pose > 0.5) else 1.0), 1.0 - exp(-10.0 * delta))
-	if state == State.EXHAUSTED:
-		tilt.rotation.x = 0.1 + sin(Time.get_ticks_msec() * 0.011) * 0.035      # heaving, shoulders against the wall
-	if winded_t > 0.0:
-		# bent double, heaving (bend about the hips: the torso tips forward, the legs are turned back so they stay upright)
+	if winded_t > 0.0 or state == State.EXHAUSTED:
+		# bent double, heaving (bend about the hips: the torso tips forward, the legs are turned back so they stay upright); an exhausted soldier is bent less
 		var a := (-1.0 if lean_wall != Vector3.ZERO and lean_dist <= LEAN_GAP + 0.05 else -0.85) + sin(Time.get_ticks_msec() * 0.012) * 0.05
+		if state == State.EXHAUSTED:
+			a = -0.33 + sin(Time.get_ticks_msec() * 0.009) * 0.05
 		tilt.rotation.x = a
 		tilt.position = Vector3(0.0, 0.86 * (1.0 - cos(a)), -0.86 * sin(a))
 	else:
 		tilt.position.z = 0.0
 	_sync_hitboxes()
+
+
+## The M4 soldier sits (clips off, posed from code, the rifle in `tilt` like before) or gets up (clips back, the rifle in his hand again).
+func _set_sitting(on: bool) -> void:
+	_sitting = on
+	if on:
+		gun.reparent(tilt, false)
+		gun.scale = Vector3.ONE           # the grip transform under the hand bone carries the skeleton's 1 / 0.000561 scale: left on, the rifle is a kilometre long
+		gun.position = Vector3(0.1, 1.12, -0.28)
+		gun.rotation = Vector3(-0.45, 0.0, 0.0)
+	else:
+		model.reset_pose()
+		gun.reparent(model.hand_node, false)
+		gun.transform = model.hand_fit_m4()
 
 
 ## Clip-driven soldiers (agile futuristic model, marksman model): pick the clip that fits what he is doing.
@@ -1766,6 +1840,10 @@ func _animate_clips(delta: float, speed: float, aiming: bool) -> void:
 	_aim_pose = 0.0
 	if state != State.ATTACK:
 		_melee_played = false
+	if state == State.CHASE or state == State.SHOOT or state == State.HOLD or state == State.ATTACK:
+		_rifle_up = true
+	if _pose_hold > 0.0 and model.current == "aim_down" and (state == State.WANDER or state == State.SUSPICIOUS):
+		return                           # the rifle comes down: nothing interrupts the clip
 	if winded_t > 0.0:
 		model.play("idle_plain" if model.has_anim("idle_plain") else "idle", 0.4)
 	elif reloading and model.has_anim("reload"):
@@ -1776,17 +1854,35 @@ func _animate_clips(delta: float, speed: float, aiming: bool) -> void:
 			model.play_once("melee", model.clip_length("melee") / maxf(melee_windup + 0.15, 0.3))
 	elif state == State.ATTACK:
 		model.play("idle")
+	elif state == State.ALERT and model.has_anim("aim_up"):
+		if not _rifle_up:
+			_rifle_up = true
+			model.play_once("aim_up", 1.0, 0.2)
+		elif model.current == "aim_up" and not model.player.is_playing():
+			model.play("aim_hold")
+	elif _rifle_up and (state == State.WANDER or state == State.SUSPICIOUS) and model.has_anim("aim_down"):
+		_rifle_up = false
+		_pose_hold = model.clip_length("aim_down") * 0.85
+		model.play_once("aim_down", 1.0, 0.2)
+	elif state == State.CHASE and _ramp_t >= 0.0 and _ramp_t < RUN_RAMP and speed > 0.3 and model.has_anim("start_run"):
+		if model.current != "start_run":
+			model.play_once("start_run", model.clip_length("start_run") / RUN_RAMP, 0.15)
 	elif charging or (kind == "marksman" and state == State.SHOOT):
 		_aim_pose = 1.0
-		model.play("aim" if model.has_anim("aim") else "idle", 1.0)
+		if moving and local.z > 0.5 and model.has_anim("back_aim"):
+			model.play("back_aim", clampf(speed / 2.0, 0.6, 1.6))          # backing away from the player, crouched, the rifle on him
+		else:
+			model.play("aim" if model.has_anim("aim") else "idle", 1.0)
 	elif aiming and moving and model.has_anim("strafe_r") and absf(local.x) > absf(local.z) * 0.8:
 		model.play("strafe_r" if local.x > 0.0 else "strafe_l", clampf(speed / 3.0, 0.7, 1.4))
 	elif aiming and moving and local.z > 0.5 and model.has_anim("back"):
-		model.play("back", clampf(speed / 3.0, 0.7, 1.4))
+		model.play("back", clampf(speed / (1.0 if model.new_clips else 3.0), 0.7, 2.2 if model.new_clips else 1.4))          # the new clip walks back at 1 m/s
 	elif aiming and moving and model.has_anim("run_shoot"):
 		model.play("run_shoot", clampf(speed / 5.0, 0.7, 1.3))
 	elif aiming and burst_left > 0 and model.has_anim("shoot"):
 		model.play("shoot", 1.0)
+	elif aiming and not moving and kind != "marksman" and model.has_anim("aim_hold"):
+		model.play("aim_hold", 1.0)
 	elif speed > RUN_ANIM_SPEED:
 		model.play("run", clampf(speed / 4.8, 0.7, 1.4))
 	elif moving:
@@ -1812,10 +1908,6 @@ func _animate_soldier(delta: float, speed: float, aiming: bool) -> void:
 	var hips := m.bone("hips")
 	var hrest := m.skeleton.get_bone_rest(hips)
 	m.skeleton.set_bone_pose_position(hips, hrest.origin + Vector3(0.0, absf(s) * 0.03 * u * amp * 2.0, 0.0))
-	if state == State.EXHAUSTED:          # sits on the ground: legs stretched out in front, hips on the floor
-		m.leg_pose("L", 1.46, 0.12)
-		m.leg_pose("R", 1.36, 0.2)
-		m.skeleton.set_bone_pose_position(hips, hrest.origin + Vector3(0.0, -0.72 * u, 0.0))
 	# where the rifle is held: across the chest / at the shoulder / low while reloading / swung as a club
 	var gp := Vector3(0.12, 1.12, -0.28)
 	var gr := Vector3(-0.45, 0.0, 0.0)
@@ -1845,9 +1937,9 @@ func _animate_soldier(delta: float, speed: float, aiming: bool) -> void:
 	if winded_t > 0.0:
 		gp = Vector3(0.12, 0.7, -0.15)
 		gr = Vector3(-1.2, 0.0, 0.0)
-	if state == State.EXHAUSTED:          # the rifle across his knees
-		gp = Vector3(0.1, 0.38, -0.3)
-		gr = Vector3(-1.0, 0.0, 0.0)
+	if state == State.EXHAUSTED:          # the rifle hangs low, held in one tired hand
+		gp = Vector3(0.12, 0.7, -0.2)
+		gr = Vector3(-1.1, 0.0, 0.0)
 	var kk := 1.0 - exp(-14.0 * delta)
 	gun.position = gun.position.lerp(gp, kk)
 	gun.rotation = gun.rotation.lerp(gr, kk)

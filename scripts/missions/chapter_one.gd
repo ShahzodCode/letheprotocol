@@ -7,7 +7,8 @@ class_name ChapterOne
 ## CLIMB TO THE ROOF): climb the fire escape of the old block to its roof and look out over the city (the landing craft settles in the
 ## park), take the marksman on the balcony (his LR-9 long rifle), and thin out the ten guards at the foot of the ramp from the balcony;
 ## then (part two) run into the lanes of Noah's neighbourhood with six soldiers behind him, take the stragglers' grenades, clear the courtyard from the low roof,
-## take the wound in the right arm and finish what is left with the last grenade; the objective ends at the open ramp of the lander.
+## take the wound in the right arm and finish what is left with the last grenade; the next objective ends at the open ramp of the lander,
+## and "X. The Commander" goes inside it (LanderInterior): sneak, the alarm, the run to the command deck, the Commander, the capture.
 
 
 static func _say(text: String) -> Callable:
@@ -49,6 +50,28 @@ static func build() -> Mission:
 		return m          # no lookout roof (LETHE_PLAIN=1): the slice ends at the cellar
 	var roof: Vector3 = lk["roof"]
 	var foot := CityStory.ramp_foot()
+	# "VI. The Basement" to "VIII. The Locked Door" (HomeScene): the empty flat, the cellar, the raid, the mother, five more, the cabinet
+	m.objectives.insert(2, Mission.obj("search_home", "FIND MUM AND MIRA", {"type": "script", "marker_pos": HomeScene.KITCHEN_POS,
+		"on_start": func(_mm: Mission) -> void: _main().home.begin_search()}))
+	var cellar: Dictionary = m.objectives[3]
+	cellar["text"] = "GO DOWN TO THE CELLAR"
+	cellar["marker_pos"] = City.CELLAR_DOOR_POS
+	m.objectives.append_array([
+		Mission.obj("reunion", "MUM AND MIRA", {"type": "script", "marker_pos": HomeScene.MOTHER_AT,
+			"on_start": func(_mm: Mission) -> void: _main().home.begin_reunion()}),
+		Mission.obj("raid", "STOP THEM - FOUR SOLDIERS UPSTAIRS", {"type": "script", "marker_pos": City.CELLAR_DOOR_POS,
+			"on_start": func(_mm: Mission) -> void: _main().home.begin_raid()}),
+		Mission.obj("cellar_door", "THE CELLAR - GET DOWN THERE", {"type": "script", "marker_pos": City.CELLAR_POS,
+			"on_start": func(_mm: Mission) -> void: _main().home.begin_cellar_door()}),
+		Mission.obj("mother", "MUM", {"type": "script", "marker_pos": HomeScene.MOTHER_AT,
+			"on_start": func(_mm: Mission) -> void: _main().home.begin_mother()}),
+		Mission.obj("five_more", "FIVE MORE - KEEP THEM AWAY FROM MIRA", {"type": "kill_group", "group": HomeScene.FIVE_GROUP,
+			"on_start": func(_mm: Mission) -> void: _main().home.begin_five()}),
+		Mission.obj("back_to_mira", "GO BACK TO MIRA", {"pos": City.CELLAR_POS, "radius": 2.5, "vertical": 2.0,
+			"on_start": func(_mm: Mission) -> void: _main().home.begin_back()}),
+		Mission.obj("locked_door", "THE LOCKED DOOR", {"type": "script",
+			"on_start": func(_mm: Mission) -> void: _main().home.begin_locked()}),
+	])
 	m.objectives.append_array([
 		Mission.obj("climb_roof", "CLIMB TO THE ROOF", {"pos": roof, "marker_pos": lk["foot"], "radius": 3.5, "vertical": 2.5,
 			"on_start": _say("TOO MANY SOLDIERS IN THE STREETS. FIND A HIGH PLACE. LOOK.")}),
@@ -86,6 +109,18 @@ static func build() -> Mission:
 				_main().chase.on_finish_start()
 				Game.radio_line.emit("ONE GRENADE FOR WHAT IS LEFT. THROW IT WITH THE LEFT HAND.")}),
 		Mission.obj("ramp", "REACH THE OPEN RAMP", {"pos": ramp_top, "radius": 3.5, "vertical": 2.2,
-			"on_start": _say("THE RAMP IS OPEN. NOBODY IS LEFT TO GUARD IT.")}),
+			"on_start": _say("THE RAMP IS OPEN. NOBODY IS LEFT TO GUARD IT."),
+			"on_complete": func(_mm: Mission) -> void: _main().ship.enter()}),
+	])
+	# "X. The Commander" (LanderInterior): inside the lander, sneak north past the patrols, the alarm, the run to the command deck, the Commander
+	m.objectives.append_array([
+		Mission.obj("ship_sneak", "FIND THE COMMANDER - STAY LOW, STAY QUIET", {"pos": LanderInterior.alarm_point(), "radius": 3.5, "vertical": 2.5,
+			"on_start": _say("THE SHIP IS FULL OF SOLDIERS. EVERY HOUSE, EVERY ROOM. SOMEONE GAVE THAT ORDER.")}),
+		Mission.obj("ship_run", "THE ALARM - RUN FOR THE COMMAND DECK", {"pos": LanderInterior.deck_door(), "radius": 2.5, "vertical": 2.5,
+			"on_start": func(_mm: Mission) -> void:
+				_main().ship.begin_alarm()
+				Game.radio_line.emit("INTRUDER ON BOARD. ALL DECKS. SEAL THE SHIP.")}),
+		Mission.obj("commander", "KILL THE COMMANDER", {"type": "script",
+			"on_start": func(_mm: Mission) -> void: _main().ship.begin_confrontation()}),
 	])
 	return m

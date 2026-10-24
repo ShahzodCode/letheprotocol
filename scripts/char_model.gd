@@ -17,13 +17,13 @@ const DEFS := {
 	},
 	"marksman": {
 		"path": "res://models/chars/marksman.glb", "height": 3.058, "foot": 0.0, "hand": "mixamorig_RightHand_15", "head": "mixamorig_Head_1",
-		"hips": "mixamorig_Hips_34", "hide": ["Object_33"], "gun_mesh": "Object_33",
+		"hips": "mixamorig_Hips_34", "hide": ["Object_33"], "gun_mesh": "Object_33", "new_clips": true,
 		"anims": {"idle": "Rifle_stand", "walk": "Walk", "run": "Rifle_run", "aim": "Rifle_crouch", "crouch": "Crouch", "idle_plain": "Idle", "run_plain": "Run"},
 		"loop": ["idle", "walk", "run", "aim", "crouch", "idle_plain", "run_plain"],
 	},
 	"agile": {
 		"path": "res://models/chars/agile.glb", "height": 0.0935, "foot": -0.003, "hand": "Bind_RightHand_037_038", "head": "Bind_Head_014_015",
-		"hips": "Bind_Hips_03_00", "hide": ["Object_10"], "gun_mesh": "Object_10",
+		"hips": "Bind_Hips_03_00", "hide": ["Object_10"], "gun_mesh": "Object_10", "new_clips": true,
 		"anims": {
 			"idle": "idleWgun", "walk": "walk", "run": "run", "aim": "shooting", "shoot": "rapidShooting", "run_shoot": "runAndShooting",
 			"strafe_l": "strafeLeft", "strafe_r": "strafeRight", "back": "backpaddle", "crouch": "crouch", "crouch_walk": "crouchWalk",
@@ -33,7 +33,7 @@ const DEFS := {
 	},
 	"soldier": {
 		"path": "res://models/chars/soldier.glb", "height": 3118.0, "foot": -9.5, "hand": "hand.R_027", "head": "head_09",
-		"hips": "hips_01", "hide": ["Object_78", "Object_80"], "rebind": true, "anims": {}, "loop": [],
+		"hips": "hips_01", "hide": ["Object_78", "Object_80"], "rebind": true, "anims": {}, "loop": [], "new_clips": true,
 	},
 }
 
@@ -63,7 +63,7 @@ const HIT_PARTS := [
 ]
 
 ## Clips that cycle with a stride: switching between them keeps the phase (no foot slide, no restart pop).
-const GAITS := ["walk", "run", "crouch_walk", "run_shoot", "strafe_l", "strafe_r", "back", "look"]
+const GAITS := ["walk", "run", "crouch_walk", "run_shoot", "strafe_l", "strafe_r", "back", "back_aim", "look"]
 ## Clips that must start at once and are never held back by the anti-flicker hold.
 const URGENT := ["death", "melee", "reload", "hit", "hit2"]
 const HOLD_TICKS := 24            # a clip stays at least this many physics ticks (0.2 s at 120) before a non-urgent change
@@ -90,13 +90,26 @@ var _started_tick := 0       # physics tick the current clip was started
 
 
 ## outfit: people only ("Adventurer", "Farmer", ...). height: metres.
-static func make(id: String, height: float = 1.75, outfit: String = "") -> CharModel:
+static func make(id: String, height: float = 1.75, outfit: String = "", legacy: bool = false) -> CharModel:
 	var c := CharModel.new()
-	c.build(id, height, outfit)
+	c.build(id, height, outfit, legacy)
 	return c
 
 
-func build(id: String, height: float = 1.75, outfit: String = "") -> void:
+## The clips of models/anims, copied onto the rig by AnimRetarget the first time a model of the rig is built (they are kept in the rig's animation
+## library). Logical name -> [file, flatten]: they replace the rig's own idle / run and add the aim, run-up and death clips. `flatten`: no travel
+## along the ground (the run-up speed and the fall's slide are done by the physics, see Enemy). `legacy` builds keep the rig's own clips only.
+const NEW_CLIPS := {
+	"idle": ["Rifle Idle", false], "run": ["Rifle Run", false], "aim_hold": ["Rifle Aiming Idle", false],
+	"aim_up": ["Rifle Down To Aim", false], "aim_down": ["Rifle Aim To Down", false], "start_run": ["Idle To Running", true],
+	"death": ["Walking To Dying", true], "die_run": ["Rifle Run To Dying", true],
+	"back": ["Backwards Rifle Walk", false], "back_aim": ["Crouch Walk Backward Aiming", false],
+}
+const NEW_LOOP := ["idle", "run", "aim_hold", "back", "back_aim"]
+var new_clips := false           # this model plays the clips above (its "death" falls forward, the way he faces)
+
+
+func build(id: String, height: float = 1.75, outfit: String = "", legacy: bool = false) -> void:
 	model_id = id
 	def = DEFS[id]
 	pivot = Node3D.new()
@@ -120,14 +133,20 @@ func build(id: String, height: float = 1.75, outfit: String = "") -> void:
 	var pl := body.find_children("*", "AnimationPlayer", true, false)
 	if not pl.is_empty():
 		player = pl[0] as AnimationPlayer
+	elif bool(def.get("new_clips", false)) and not legacy:
+		player = AnimationPlayer.new()          # the M4 soldier has none of its own: it plays the clips of models/anims (and some borrowed)
+		body.add_child(player)
+	if player != null:
 		_map_clips()
+		if bool(def.get("new_clips", false)) and not legacy:
+			_add_new_clips()
 	hand_node = BoneAttachment3D.new()
 	hand_node.bone_name = String(def["hand"])
 	skeleton.add_child(hand_node)
 	head_node = BoneAttachment3D.new()
 	head_node.bone_name = String(def["head"])
 	skeleton.add_child(head_node)
-	if player != null and (id == "agile" or id == "marksman"):
+	if player != null and (id == "agile" or id == "marksman" or (id == "soldier" and new_clips)):
 		_find_roles()
 		layer = PoseLayer.new()
 		layer.roles = roles
@@ -136,9 +155,10 @@ func build(id: String, height: float = 1.75, outfit: String = "") -> void:
 
 func _find_roles() -> void:
 	for i in skeleton.get_bone_count():
-		var parts := skeleton.get_bone_name(i).split("_")
-		if parts.size() > 1 and ROLES.has(parts[1]) and not roles.has(parts[1]):
-			roles[parts[1]] = i
+		var nm := skeleton.get_bone_name(i)
+		var role := AnimRetarget.role_of(nm, true) if model_id == "soldier" else (nm.split("_")[1] if nm.split("_").size() > 1 else "")
+		if ROLES.has(role) and not roles.has(role):
+			roles[role] = i
 
 
 func _pick_outfit(outfit: String) -> void:
@@ -199,6 +219,67 @@ func _map_clips() -> void:
 			clip_of[logical] = lib[short]
 			var a := player.get_animation(lib[short])
 			a.loop_mode = Animation.LOOP_LINEAR if loops.has(logical) else Animation.LOOP_NONE
+
+
+## Clips the M4 soldier borrows from the other rigs (it has none of its own and models/anims has no walk, reload, melee, shots or strafes):
+## logical name -> [rig, clip]. Retargeted like the others.
+const BORROWED := {"walk": ["agile", "walk"], "reload": ["agile", "reload"], "melee": ["agile", "melee"], "shoot": ["agile", "rapidShooting"],
+	"strafe_l": ["agile", "strafeLeft"], "strafe_r": ["agile", "strafeRight"]}
+const BORROWED_LOOP := ["walk", "shoot", "strafe_l", "strafe_r"]
+
+
+func _add_borrowed(lib: AnimationLibrary, prefix: String) -> void:
+	var rigs := {}                  # rig -> its model instance (made once, freed at the end)
+	for logical in BORROWED:
+		var key := "lp_" + String(logical)
+		if not lib.has_animation(key):
+			var info: Array = BORROWED[logical]
+			if not rigs.has(info[0]):
+				rigs[info[0]] = (load(String(DEFS[info[0]]["path"])) as PackedScene).instantiate() as Node3D
+			var src_root: Node3D = rigs[info[0]]
+			var sks := src_root.find_children("*", "Skeleton3D", true, false)
+			var aps := src_root.find_children("*", "AnimationPlayer", true, false)
+			if not sks.is_empty() and not aps.is_empty():
+				var ap := aps[0] as AnimationPlayer
+				for full in ap.get_animation_list():
+					if String(full).get_slice("|", String(full).get_slice_count("|") - 1) == String(info[1]):
+						lib.add_animation(key, AnimRetarget.retarget(ap.get_animation(full), sks[0] as Skeleton3D, src_root, skeleton, body, prefix, true, false, false))
+						break
+		if lib.has_animation(key):
+			lib.get_animation(key).loop_mode = Animation.LOOP_LINEAR if BORROWED_LOOP.has(logical) else Animation.LOOP_NONE
+			clip_of[logical] = key
+	for r in rigs.values():
+		(r as Node).free()
+
+
+func _add_new_clips() -> void:
+	if not player.has_animation_library(&""):
+		player.add_animation_library(&"", AnimationLibrary.new())
+	var lib := player.get_animation_library(&"")
+	var prefix := String(player.get_node(player.root_node).get_path_to(skeleton))
+	for logical in NEW_CLIPS:
+		var key := "lp_" + String(logical)
+		if not lib.has_animation(key):
+			var info: Array = NEW_CLIPS[logical]
+			var ps := load("res://models/anims/%s.fbx" % info[0]) as PackedScene
+			if ps == null:
+				continue
+			var src_root := ps.instantiate() as Node3D
+			var sks := src_root.find_children("*", "Skeleton3D", true, false)
+			var aps := src_root.find_children("*", "AnimationPlayer", true, false)
+			if not sks.is_empty() and not aps.is_empty():
+				var ap := aps[0] as AnimationPlayer
+				var names := ap.get_animation_list()
+				if not names.is_empty():
+					lib.add_animation(key, AnimRetarget.retarget(ap.get_animation(names[0]), sks[0] as Skeleton3D, src_root, skeleton, body, prefix,
+							model_id == "soldier", false, bool(info[1])))
+			src_root.free()
+		if lib.has_animation(key):
+			lib.get_animation(key).loop_mode = Animation.LOOP_LINEAR if NEW_LOOP.has(logical) else Animation.LOOP_NONE
+			clip_of[logical] = key
+			new_clips = true
+	if model_id == "soldier":
+		_add_borrowed(lib, prefix)
 
 
 func has_anim(logical: String) -> bool:
@@ -427,8 +508,36 @@ func hand_fit() -> Transform3D:
 
 ## Put a weapon node (grip at its origin) into the right hand.
 func hold(n: Node3D) -> void:
-	n.transform = hand_fit()
+	n.transform = hand_fit_m4() if model_id == "soldier" else hand_fit()
 	hand_node.add_child(n)
+
+
+## Where the rifle's grip sits in the M4 soldier's hand. The M4 has no gun of its own that fits (its rest is a T-pose), so the grip of the marksman
+## rig (printed by tests/hand_fit_probe.gd: rotation and origin in metres, in the hand bone's frame) is carried over: the two hands' frames differ
+## by the turns `AnimRetarget.frame_turn` gives against the Mixamo clips' hand, so the grip is turned by those. Needs the model inside the tree.
+const MARKSMAN_GRIP_Q := Quaternion(0.45634, 0.48265, -0.52510, 0.53205)
+const MARKSMAN_GRIP_O := Vector3(0.05671, 0.15245, 0.04326)
+static var _fit_m4 := Transform3D.IDENTITY
+static var _fit_m4_ready := false
+
+
+func hand_fit_m4() -> Transform3D:
+	if _fit_m4_ready:
+		return _fit_m4
+	var mk := (load(String(DEFS["marksman"]["path"])) as PackedScene).instantiate() as Node3D
+	var mx := (load("res://models/anims/Rifle Idle.fbx") as PackedScene).instantiate() as Node3D
+	var mk_sk := mk.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
+	var mx_sk := mx.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
+	var c_mk := AnimRetarget.frame_turn(mx_sk, mx, mk_sk, mk, "RightHand", false)
+	var c_m4 := AnimRetarget.frame_turn(mx_sk, mx, skeleton, body, "RightHand", true)
+	mk.free()
+	mx.free()
+	var rot := c_m4.inverse() * c_mk * MARKSMAN_GRIP_Q
+	var org := c_m4.inverse() * (c_mk * MARKSMAN_GRIP_O)
+	var upm := global_transform.basis.get_scale().x / hand_node.global_transform.basis.get_scale().x
+	_fit_m4 = Transform3D(Basis(rot).scaled_local(Vector3.ONE * upm), org * upm)
+	_fit_m4_ready = true
+	return _fit_m4
 # ---------------------------------------------------------------- procedural pose (M4 soldier)
 
 var _bones := {}

@@ -167,6 +167,22 @@ static func _colliders(world: World) -> void:
 	world.add_child(body)
 
 
+const SMOKE_FADE_NEAR := 110.0
+const SMOKE_FADE_FAR := 300.0
+const SMOKE_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled, depth_draw_never, fog_disabled;
+varying float dist;
+void vertex() {
+	dist = length((MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz);
+}
+void fragment() {
+	ALBEDO = COLOR.rgb;
+	ALPHA = COLOR.a * smoothstep(%.1f, %.1f, dist);
+}
+"""
+
+
 ## The fire manager (flames, smoke and a few lights near the player) and the far smoke columns.
 static func _fires(world: World) -> Fires:
 	var fires := Fires.new()
@@ -184,9 +200,11 @@ static func _fires(world: World) -> Fires:
 		var w: float = float(info[2]) * float(f["s"])
 		cols.append([Transform3D(Basis.from_scale(Vector3(w, h, w)), Vector3(p.x, base_y + h * 0.5, p.z)), Color(0.14, 0.13, 0.13, 0.3)])
 	if not cols.is_empty():
-		var m := StandardMaterial3D.new()
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		m.vertex_color_use_as_albedo = true
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		# the columns are far-away smoke: close up a 110 m grey pillar hangs over the street like a monolith, so they fade out inside
+		# SMOKE_FADE_NEAR and are fully there beyond SMOKE_FADE_FAR (the burning things near the player have their own particle smoke)
+		var sh := Shader.new()
+		sh.code = SMOKE_SHADER % [SMOKE_FADE_NEAR, SMOKE_FADE_FAR]
+		var m := ShaderMaterial.new()
+		m.shader = sh
 		_mm(world, _cyl(0.5, 0.1, 10), cols, m, false)
 	return fires

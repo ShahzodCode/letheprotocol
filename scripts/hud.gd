@@ -585,9 +585,13 @@ func _update_stealth() -> void:
 
 ## Soldiers talking over the radio (subtitle at the bottom of the screen).
 func _on_radio_line(text: String) -> void:
-	radio_label.text = "[RADIO]  " + text
+	if text.begins_with("@"):          # a spoken line that is not on the radio (the Commander): no prefix, held longer
+		radio_label.text = text.substr(1)
+		radio_t = clampf(2.0 + float(text.length()) * 0.04, 3.0, 6.0)
+	else:
+		radio_label.text = "[RADIO]  " + text
+		radio_t = 3.2
 	radio_label.modulate.a = 1.0
-	radio_t = 3.2
 
 
 func _on_objective_completed(_id: String, _text: String) -> void:
@@ -656,6 +660,8 @@ func _set_paused(p: bool) -> void:
 	Game.mark("pause")
 	if p:
 		_show_gpu_warning()
+		if _menu_widgets.has("invisible"):
+			(_menu_widgets["invisible"] as CheckBox).set_pressed_no_signal(Game.invisible)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if p else Input.MOUSE_MODE_CAPTURED
 
 
@@ -793,19 +799,17 @@ func _process(delta: float) -> void:
 
 # ---------------------------------------------------------------- pause menu
 
-const GUIDE := """MOVEMENT
-WASD  walk (5 m/s).  Shift  sprint forward (8 m/s, loud, cancels aiming).
+
+
+const GUIDE_MOVE := """WASD  walk (5 m/s).  Shift  sprint forward (8 m/s, loud, cancels aiming).
 Ctrl  crouch (slow and silent to soldiers, shorter: fits under low pipes and slabs).
 Shift, then Ctrl while sprinting  slide.
 Space  jump, hold for a higher jump. You can jump a moment after leaving a ledge.
 Small ledges (up to 0.55 m: kerbs, steps, stairs) are climbed automatically.
-Ladders: walk into one and press W. W / S climb, Space jumps off backwards,
-the top steps onto the roof. You cannot shoot on a ladder, but you can change weapon.
-Fall damage starts above about 2 storeys; 4 storeys nearly kills, 6 storeys does.
-STEALTH
-Crouched, nobody hears you. Stand behind a soldier with a knife and press E for a silent takedown.
-COMBAT
-LMB fire, RMB aim, R reload, 1 / 2 / 3 weapon slots, Tab or wheel cycle, Q pick up, hold G grenade.
+Ladders: walk into one and press W. W / S climb, Space jumps off backwards, the top steps onto the roof. You cannot shoot on a ladder, but you can change weapon.
+Fall damage starts above about 2 storeys; 4 storeys nearly kills, 6 storeys does."""
+const GUIDE_STEALTH := """Crouched, nobody hears you. Stand behind a soldier with a knife and press E for a silent takedown."""
+const GUIDE_COMBAT := """LMB fire, RMB aim, R reload, 1 / 2 / 3 weapon slots, Tab or wheel cycle, Q pick up, hold G grenade.
 RELOADING: the rounds left in the gun are lost; you get a full magazine from your spares.
 The counter shows how many spare magazines you carry."""
 
@@ -840,70 +844,103 @@ func _build_pause_menu() -> void:
 	gpu_warning.custom_minimum_size = Vector2(900, 0)
 	gpu_warning.visible = false
 	outer.add_child(gpu_warning)
-	var cols := HBoxContainer.new()
-	cols.add_theme_constant_override("separation", 40)
-	outer.add_child(cols)
-	# --- left: settings
-	var left := VBoxContainer.new()
-	left.custom_minimum_size = Vector2(380, 0)
-	left.add_theme_constant_override("separation", 6)
-	cols.add_child(left)
-	left.add_child(_menu_label("GRAPHICS", ACCENT, 20))
-	_menu_option(left, "Quality preset", "preset", ["Custom", "Low", "Medium", "High"], 0, func(i: int) -> void:
+	# tabs: each kind of setting lives in its own section, with a line under it saying what it does
+	var tabs := TabContainer.new()
+	tabs.custom_minimum_size = Vector2(900, 470)
+	tabs.add_theme_font_size_override("font_size", 18)
+	outer.add_child(tabs)
+	# --- GRAPHICS
+	var gfx := _menu_tab(tabs, "GRAPHICS")
+	_menu_option(gfx, "Quality preset", "preset", ["Custom", "Low", "Medium", "High"], 0, func(i: int) -> void:
 		if i > 0:
 			Settings.preset(i - 1)
 			_sync_menu()
 			_apply_settings())
-	_menu_option(left, "Shadows", "shadows", ["Off", "Low", "High"], Settings.shadows, func(i: int) -> void:
+	_menu_note(gfx, "Sets shadows, anti-aliasing, render scale and view distance in one go. Change any of them below and it becomes Custom.")
+	_menu_option(gfx, "Shadows", "shadows", ["Off", "Low", "High"], Settings.shadows, func(i: int) -> void:
 		Settings.shadows = i
 		_apply_settings())
-	_menu_option(left, "Anti-aliasing", "aa", ["Off", "MSAA 2x", "MSAA 4x"], Settings.aa, func(i: int) -> void:
+	_menu_note(gfx, "Sun shadows. Low only shades the area right around you; the biggest saving after render scale.")
+	_menu_option(gfx, "Anti-aliasing", "aa", ["Off", "MSAA 2x", "MSAA 4x"], Settings.aa, func(i: int) -> void:
 		Settings.aa = i
 		_apply_settings())
-	_menu_option(left, "View distance", "view", ["Short", "Medium", "Long"], Settings.view, func(i: int) -> void:
+	_menu_note(gfx, "Smooths jagged edges of buildings and weapons. Costs speed on weaker cards.")
+	_menu_option(gfx, "View distance", "view", ["Short", "Medium", "Long"], Settings.view, func(i: int) -> void:
 		Settings.view = i
 		_apply_settings())
-	_menu_slider(left, "Render scale", "scale", 50.0, 100.0, 5.0, float(Settings.scale_pct), "%d%%", func(v: float) -> void:
+	_menu_note(gfx, "How far you can see down the avenues before the haze takes the city.")
+	_menu_slider(gfx, "Render scale", "scale", 50.0, 100.0, 5.0, float(Settings.scale_pct), "%d%%", func(v: float) -> void:
 		Settings.scale_pct = int(v)
 		_apply_settings())
-	left.add_child(_menu_label("GAME", ACCENT, 20))
-	_menu_slider(left, "Mouse sensitivity", "sens", 0.3, 2.5, 0.1, Settings.sens, "x%.1f", func(v: float) -> void:
-		Settings.sens = v
-		_apply_settings())
-	_menu_check(left, "Fullscreen", "fullscreen", Settings.fullscreen, func(on: bool) -> void:
+	_menu_note(gfx, "Draws the 3D view at a lower resolution and stretches it. 100% is sharpest.")
+	_menu_check(gfx, "Fullscreen", "fullscreen", Settings.fullscreen, func(on: bool) -> void:
 		Settings.fullscreen = on
 		_apply_settings())
-	_menu_check(left, "VSync", "vsync", Settings.vsync, func(on: bool) -> void:
+	_menu_check(gfx, "VSync", "vsync", Settings.vsync, func(on: bool) -> void:
 		Settings.vsync = on
 		_apply_settings())
-	left.add_child(_menu_label("CHEATS", ACCENT, 20))
+	_menu_note(gfx, "VSync locks the frame rate to your screen and stops tearing; turn it off for the highest FPS.")
+	# --- GAME
+	var game := _menu_tab(tabs, "GAME")
+	_menu_slider(game, "Mouse sensitivity", "sens", 0.3, 2.5, 0.1, Settings.sens, "x%.1f", func(v: float) -> void:
+		Settings.sens = v
+		_apply_settings())
+	_menu_note(game, "Multiplies how far the view turns for each mouse movement.")
+	# --- CONTROLS (the guide, in its own sections)
+	var ctl := _menu_tab(tabs, "CONTROLS")
+	for part in [["MOVEMENT", GUIDE_MOVE], ["STEALTH", GUIDE_STEALTH], ["COMBAT", GUIDE_COMBAT]]:
+		ctl.add_child(_menu_label(String(part[0]), ACCENT, 18))
+		var g := _menu_label(String(part[1]), Color(0.85, 0.92, 0.92), 14)
+		g.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		g.custom_minimum_size = Vector2(850, 0)
+		ctl.add_child(g)
+	# --- CHEATS
+	var cheats := _menu_tab(tabs, "CHEATS")
 	var give := Button.new()
 	give.text = "GIVE  SNIPER + HEAVY GUN  (full ammo)"
 	give.custom_minimum_size = Vector2(0, 38)
 	give.pressed.connect(func() -> void:
 		player.weapons.give_heavy_set()
 		_set_paused(false))
-	left.add_child(give)
+	cheats.add_child(give)
+	_menu_note(cheats, "Puts the LR-9 long rifle and the heavy gun in your rifle slots with all their ammunition.")
 	var clear := Button.new()
 	clear.text = "KILL SOLDIERS WITHIN 50 m"
 	clear.custom_minimum_size = Vector2(0, 38)
 	clear.pressed.connect(func() -> void:
 		_clear_nearby()
 		_set_paused(false))
-	left.add_child(clear)
-	# --- right: the guide
-	var guide := Label.new()
-	guide.text = GUIDE
-	guide.add_theme_font_size_override("font_size", 13)
-	guide.add_theme_color_override("font_color", Color(0.85, 0.92, 0.92))
-	guide.custom_minimum_size = Vector2(500, 0)
-	guide.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	cols.add_child(guide)
+	cheats.add_child(clear)
+	_menu_note(cheats, "Instantly kills every soldier within 50 metres of you.")
+	_menu_check(cheats, "Invisible to soldiers", "invisible", Game.invisible, func(on: bool) -> void:
+		Game.invisible = on)
+	_menu_note(cheats, "No soldier can see or hear you, and soldiers already hunting you lose you. Walk anywhere freely; turn it off to be seen again.")
 	var resume := Button.new()
 	resume.text = "RESUME  (Esc)"
 	resume.custom_minimum_size = Vector2(0, 44)
 	resume.pressed.connect(func() -> void: _set_paused(false))
 	outer.add_child(resume)
+
+
+## A tab page of the pause menu (a scrolling column) returned as the VBox to fill.
+func _menu_tab(tabs: TabContainer, title: String) -> VBoxContainer:
+	var scroll := ScrollContainer.new()
+	scroll.name = title
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(col)
+	tabs.add_child(scroll)
+	return col
+
+
+## A small grey line under a setting that says what it does.
+func _menu_note(parent: Control, text: String) -> void:
+	var l := _menu_label(text, Color(0.62, 0.7, 0.72), 13)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(840, 0)
+	parent.add_child(l)
 
 
 ## One-time warning (once per adapter name, remembered in settings.cfg) when the game is not drawing on the NVIDIA card.
