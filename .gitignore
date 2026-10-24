@@ -5,6 +5,10 @@
 export_presets.cfg
 /android/
 docs_backup/
+# exported builds
+/Lethe Protocol.exe
+/Lethe Protocol.console.exe
+/Ready Game Files/
 # private / not for the public repo
 The Story/
 PROMPTS.md
