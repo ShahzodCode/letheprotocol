@@ -20,8 +20,9 @@ const M4_ROLES := {"hips": "Hips", "spine": "Spine", "chest": "Spine2", "neck": 
 const LATERAL := {"LeftHand": ["LeftHandIndex1", "LeftHandPinky1"], "RightHand": ["RightHandIndex1", "RightHandPinky1"]}
 
 
-## The bone each role points at (its direction in the rest pose), where both rigs have both.
-const CHILD := {"Hips": "Spine", "Spine": "Spine1", "Spine1": "Spine2", "Spine2": "Neck", "Neck": "Head", "Head": "HeadTop",
+## The bone each role points at (its direction in the rest pose), where both rigs have both. Not the head: the Mixamo head bone leans 19 degrees
+## forward of the face, so matching it would bow the M4 soldier's head (rigs without a head-top bone never matched it either).
+const CHILD := {"Hips": "Spine", "Spine": "Spine1", "Spine1": "Spine2", "Spine2": "Neck", "Neck": "Head",
 	"LeftShoulder": "LeftArm", "LeftArm": "LeftForeArm", "LeftForeArm": "LeftHand", "LeftHand": "LeftHandIndex1",
 	"RightShoulder": "RightArm", "RightArm": "RightForeArm", "RightForeArm": "RightHand", "RightHand": "RightHandIndex1",
 	"LeftUpLeg": "LeftLeg", "LeftLeg": "LeftFoot", "LeftFoot": "LeftToeBase",

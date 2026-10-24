@@ -185,7 +185,9 @@ func _rebind_skins() -> void:
 	for j in first.get_bind_count():
 		var bi := skeleton.find_bone(first.get_bind_name(j)) if first.get_bind_name(j) != "" else first.get_bind_bone(j)
 		var p := first.get_bind_pose(j)
-		bind_global[bi] = Transform3D(p.basis.orthonormalized(), p.origin).affine_inverse()
+		if p.origin.is_zero_approx():
+			continue           # an end bone with no weights ("head_end"): exported without a bind pose, it keeps its own rest (else it sits at the feet and the retarget turns the head upside down)
+		bind_global[bi] =Transform3D(p.basis.orthonormalized(), p.origin).affine_inverse()
 	for i in skeleton.get_bone_count():
 		if not bind_global.has(i):
 			continue
