@@ -6,12 +6,11 @@ extends Node
 ## voiced lines (Voice, Cartesia clips) and a short black-out for the parts the book tells rather than shows; no camera is taken away.
 ##
 ## Objectives (ChapterOne): search_home -> go_cellar -> reunion -> raid -> cellar_door -> mother -> five_more -> back_to_mira -> locked_door.
-## Roles (Main.story_roles): home_raid (the four in the flat, group RAID_GROUP), home_fourth (the one in the cellar), home_hunt / home_post
-## (the five more, group FIVE_GROUP: two come straight for the player, three search the rooms). The mother and Mira are not Civilians
-## (no hit boxes, soldiers do not see them): two Actors driven only by this script.
+## Roles (Main.story_roles): home_raid (the four in the flat, group RAID_GROUP), home_fourth (the one in the cellar), home_stair and
+## home_search_* (the five more: two down the stairs, three searching upstairs, see STAIR_AT / SEARCH_AT). The mother and Mira are not
+## Civilians (no hit boxes, soldiers do not see them): two Actors driven only by this script.
 
 const RAID_GROUP := 210
-const FIVE_GROUP := 211
 const KITCHEN_POS := Vector3(19.4, 0.0, -33.9)
 const MOTHER_AT := Vector3(21.1, -2.7, -22.1)
 const MIRA_AT := Vector3(21.75, -2.7, -21.55)
@@ -24,14 +23,31 @@ const RAID_SPOTS := [
 	[Vector3(24.4, 0.0, -27.1), PI],                # parents' bedroom
 	[Vector3(17.9, 0.0, -27.6), PI],                # bathroom
 ]
-const FIVE_HUNT := [Vector3(19.5, 0.0, -30.5), Vector3(17.2, 0.0, -30.6)]
-const FIVE_POST := [[Vector3(17.9, 0.0, -27.6), PI], [Vector3(25.5, 0.0, -32.0), -PI * 0.5], [Vector3(26.0, 0.0, -27.4), PI]]
+## "VII. Five More" as the book tells it. Two find the cellar door and come down the stairs, slow and wary, one after the other, into the dark
+## where Noah waits (they see little, take a while to be sure of what they see and aim badly down there). The other three search the rooms
+## upstairs and hear nothing of the cellar (passive) until Noah comes up or the two are dead; then they are ordinary calm soldiers, each on his
+## own: the bathroom one has his back to the hallway, the living-room one charges at the first shot, the bedroom one comes slowly, afraid.
+const STAIR_AT := [Vector3(19.5, 0.0, -30.5), Vector3(14.8, 0.0, -30.6)]      # at the stair door; in through the front door
+const STAIR_GAP := 4.0                # seconds between the first and the second man on the stairs
+const STAIR_PACE := 0.45
+const STAIR_SIGHT := 0.55
+const STAIR_SEEN_DELAY := 0.6
+const STAIR_AIM := 1.8
+## [position, facing, role]: facing away from the doors the player comes through
+const SEARCH_AT := [
+	[Vector3(18.0, 0.0, -27.0), PI, "home_search_bath"],          # peering into the bathroom, his back to the hallway
+	[Vector3(26.4, 0.0, -33.1), 0.0, "home_search_living"],       # the living room: charges at the first shot
+	[Vector3(24.4, 0.0, -27.2), -PI * 0.5, "home_search_bed"],    # the parents' bedroom: the last, slow and afraid
+]
+const AFRAID_PACE := 0.55
+const AFRAID_LAZY := 2.5
+const AFRAID_AIM := 1.6
 const FOURTH_HEALTH := 40.0
 const FOURTH_WAIT_MAX := 6.0          # the last of the four is moved to the cellar out of the player's sight; after this long, anyway
 const KNOCK_AFTER := 2.5              # seconds inside the empty flat before the knocking
 const BARRICADE := Vector3(20.2, 0.0, -29.35)        # the hallway cabinet in front of the stair door
 const AFTER_SPOT := Vector3(21.8, 0.0, -30.7)        # where Noah stands when the black-out lifts
-const BED_TOP := Vector3(29.0, 0.6, -27.35)
+const BED_TOP := Vector3(28.6, 0.6, -26.7)
 const FADE_TIME := 0.8
 
 ## the lines (the subtitle text is also the key of the voice clip, see Voice)
@@ -63,16 +79,8 @@ const L_ORDER2 := "@SOMEONE HAD GIVEN AN ORDER. EVERY HOUSE, EVERY ROOM, NOBODY 
 const L_MAN := "@SOMEWHERE IN THIS CITY WAS THE MAN WHO HAD GIVEN IT."
 
 
-## The mother or Mira: one person of the people pack (the pack has no women, so both get long hair), driven only by HomeScene.
+## The mother or Mira: one person of the people pack, driven only by HomeScene.
 class Actor extends Node3D:
-	const HAIR := Color(0.24, 0.15, 0.09)
-	## hair boxes in the rig's frame (metres at full size, +z is the back of the head): [centre, size]
-	const HAIR_BOXES := [
-		[Vector3(0.0, 1.78, 0.02), Vector3(0.32, 0.08, 0.33)],
-		[Vector3(0.0, 1.52, 0.15), Vector3(0.33, 0.5, 0.07)],
-		[Vector3(0.16, 1.62, 0.03), Vector3(0.04, 0.32, 0.25)],
-		[Vector3(-0.16, 1.62, 0.03), Vector3(0.04, 0.32, 0.25)],
-	]
 	var rig: Node3D
 	var tilt: Node3D
 	var model: CharModel
@@ -82,7 +90,6 @@ class Actor extends Node3D:
 	var dead := false
 	var crouched := false
 	var player: Node3D
-	var _hair: Node3D
 
 	func setup(outfit: String, k: float, p: Node3D) -> void:
 		scale_k = k
@@ -95,30 +102,6 @@ class Actor extends Node3D:
 		model = CharModel.make("people", 1.75, outfit)
 		tilt.add_child(model)
 		model.play("idle")
-		_hair = Node3D.new()
-		model.head_node.add_child(_hair)
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = HAIR
-		mat.roughness = 0.9
-		for hb in HAIR_BOXES:
-			var mi := MeshInstance3D.new()
-			var bm := BoxMesh.new()
-			bm.size = hb[1]
-			mi.mesh = bm
-			mi.material_override = mat
-			mi.position = hb[0]
-			_hair.add_child(mi)
-
-	func _ready() -> void:
-		_fit_hair.call_deferred()
-
-	## The hair is built in the rig's frame and then hung on the head bone (whatever its axes), so it follows the head in every clip.
-	func _fit_hair() -> void:
-		await get_tree().process_frame
-		if not is_instance_valid(_hair):
-			return
-		var want := rig.global_transform
-		_hair.transform = model.head_node.global_transform.affine_inverse() * want
 
 	func face(angle: float) -> void:
 		facing = angle
@@ -177,6 +160,9 @@ var _knocked := false
 var _third := false                   # raid: three of the four are down
 var _fourth_t := 0.0
 var _shot := false                    # cellar_door: the mother has been shot
+var _five_t := 0.0                    # five_more: seconds since it began
+var _second_down := false             # the second man has been sent down the stairs
+var _searching := false               # the three upstairs have woken up (no longer passive)
 var _fade_layer: CanvasLayer
 var _fade: ColorRect
 var _fade_a := 0.0
@@ -271,6 +257,9 @@ func sync() -> void:
 			_fourth_t = 0.0
 		"cellar_door":
 			_shot = false
+		"five_more":
+			_reset_five()
+			_wake_searchers(false)
 		"mother":
 			begin_mother()
 		"locked_door":
@@ -370,17 +359,29 @@ func apply_role(e: Enemy, role: String) -> void:
 			e.health = minf(e.health, FOURTH_HEALTH)
 			var d := MOTHER_AT - e.home
 			e.post_facing = atan2(-d.x, -d.z)
-		"home_hunt":
-			e.group = FIVE_GROUP
+		"home_stair":
+			# down the stairs into the dark, slowly, to where the shots came from; he sees little and aims badly down there
+			e.group = -1
 			e.post = false
-			e.knows_player = true
-			e._aggravate(true)
-			e.alert_t = 0.8
-			e.last_known = player.global_position
-		"home_post":
-			e.group = FIVE_GROUP
+			e.pace = STAIR_PACE
+			e.sight_scale = STAIR_SIGHT
+			e.seen_delay = STAIR_SEEN_DELAY
+			e.aim_scale = STAIR_AIM
+			e.state = Enemy.State.CHASE
+			e.last_known = City.CELLAR_POS
+			e.nav_goal = Vector3.INF
+			e.lost_t = 0.0
+		"home_search_bath", "home_search_living", "home_search_bed":
+			e.group = -1               # each on his own: one shot does not send all of them running at once
 			e.post = true
-			e.post_facing = _nearest_facing(FIVE_POST, e.home)
+			for s in SEARCH_AT:
+				if String(s[2]) == role:
+					e.post_facing = float(s[1])
+			if role == "home_search_bed":
+				e.pace = AFRAID_PACE
+				e.lazy_alert = AFRAID_LAZY
+				e.aim_scale = AFRAID_AIM
+			_set_listening(e, _searching)
 	if e.post:
 		e.facing = e.post_facing
 		e.rig.rotation.y = e.facing
@@ -498,12 +499,64 @@ func begin_mother() -> void:
 		func() -> void: Mission.complete("mother"))
 
 
+## FIVE MORE starts: Noah is patched up (a quiet moment after the mother), the first man starts down the stairs and the three upstairs begin
+## searching (all of them are in the checkpoint); the second man follows STAIR_GAP later.
 func begin_five() -> void:
-	for p in FIVE_HUNT:
-		main._assign_role(main._spawn_enemy_at(p, "soldier"), "home_hunt")
-	for s in FIVE_POST:
-		main._assign_role(main._spawn_enemy_at(s[0], "soldier"), "home_post")
+	_reset_five()
+	player.health = Game.MAX_HEALTH
+	main._assign_role(main._spawn_enemy_at(STAIR_AT[0], "soldier"), "home_stair")
+	for s in SEARCH_AT:
+		main._assign_role(main._spawn_enemy_at(s[0], "soldier"), String(s[2]))
 	_play([0.6, L_WHO], Callable())
+
+
+func _reset_five() -> void:
+	_five_t = 0.0
+	_second_down = false
+	_searching = false
+
+
+func _role_of(e: Enemy) -> String:
+	return String(main.story_roles.get(e.uid, ""))
+
+
+## One of the three upstairs: deaf to the cellar fight and looking into his room (passive), or an ordinary calm soldier at his post.
+func _set_listening(e: Enemy, on: bool) -> void:
+	e.passive = not on
+	e.state = Enemy.State.WANDER
+	if on:
+		e.scripted_aim = Vector3.INF
+	else:
+		e.scripted_aim = e.home + Vector3(-sin(e.post_facing) * 3.0, 1.2, -cos(e.post_facing) * 3.0)
+
+
+## Wakes the three upstairs (or, with `on` false after a restore, puts them back to searching deaf).
+func _wake_searchers(on: bool = true) -> void:
+	_searching = on
+	for e in Game.enemies:
+		var en := e as Enemy
+		if is_instance_valid(en) and en.state != Enemy.State.DEAD and _role_of(en).begins_with("home_search"):
+			_set_listening(en, on)
+
+
+func _tick_five(delta: float) -> void:
+	_five_t += delta
+	if not _second_down and _five_t >= STAIR_GAP:
+		_second_down = true
+		main._assign_role(main._spawn_enemy_at(STAIR_AT[1], "soldier"), "home_stair")
+	var stair_alive := _with_role("home_stair").size()
+	var noah_up := player.global_position.y > -0.5
+	if not _searching and _second_down and (stair_alive == 0 or noah_up):
+		_wake_searchers()
+	if not _second_down:
+		return
+	var left := stair_alive
+	for e in Game.enemies:
+		var en := e as Enemy
+		if is_instance_valid(en) and en.state != Enemy.State.DEAD and _role_of(en).begins_with("home_search"):
+			left += 1
+	if left == 0:
+		Mission.complete("five_more")
 
 
 func begin_back() -> void:
@@ -631,3 +684,5 @@ func _process(delta: float) -> void:
 			_tick_raid(delta)
 		"cellar_door":
 			_tick_cellar_door()
+		"five_more":
+			_tick_five(delta)

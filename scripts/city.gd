@@ -55,8 +55,9 @@ const INSTITUTE_EXIT := Vector3(-30.0, 0.0, 240.5)                 # on the aven
 ## NOAH'S HOME: a 4-storey apartment block east of the central avenue; only the ground-floor apartment (14 x 10 m, 3 m high)
 ## can be entered. A door in its hallway leads down a staircase into a 6 x 5 m, 2.4 m high cellar under the yard.
 const HOME_BLOCK := Rect2(12.0, -74.0, 36.0, 62.0)
-const HOME_RECT := Rect2(16.0, -36.0, 14.8, 10.8)                  # outer footprint (walls 0.4 m)
+const HOME_RECT := Rect2(16.0, -36.0, 20.4, 14.4)                  # outer footprint (walls 0.4 m)
 const HOME_ORIGIN := Vector2(16.4, -35.6)                          # north-west corner of the apartment's inside; u = east, v = south
+const HOME_IN := Vector2(19.6, 13.6)                               # the apartment's inside (u, v): the old 14 x 10 flat plus an east wing and a back hall
 const HOME_H := 13.2
 const APT_H := 3.0
 const HOME_POS := Vector3(16.2, 0.0, -30.6)                        # the front door
@@ -710,9 +711,9 @@ static func _add_layer(lname: String, rect: Rect2, cell: float, ymin: float, yma
 static func _build_layers() -> void:
 	var o := HOME_ORIGIN
 	# the apartment: finer cells so 1.2 m doorways stay open (margin 0.35 leaves 0.5 m for a body 0.7 m wide)
-	var home := _add_layer("home", Rect2(15.8, o.y, 14.6, 10.0), 0.25, -0.6, 2.8, 0.0, -1,
+	var home := _add_layer("home", Rect2(15.8, o.y, HOME_IN.x + 0.6, HOME_IN.y), 0.25, -0.6, 2.8, 0.0, -1,
 		Vector3(15.5, 0.0, o.y + 5.0 - 0.1), [Vector3(16.2, 0.0, o.y + 5.0)], Vector3(17.1, 0.0, o.y + 5.0),
-		[Rect2(o, Vector2(14.0, 10.0))], 0.35)
+		[Rect2(o, HOME_IN)], 0.35)
 	# the cellar and the stairs down to it, linked at the top of the stairs
 	_add_layer("cellar", Rect2(17.4, STAIR_HOLE.position.y, 6.0, CELLAR_RECT.end.y - STAIR_HOLE.position.y), 0.25, -4.0, -0.6, CELLAR_FLOOR_Y, home,
 		CELLAR_DOOR_POS, [Vector3(20.2, -0.5, STAIR_HOLE.position.y + 0.4), Vector3(20.2, -1.6, STAIR_HOLE.position.y + 1.7), Vector3(20.2, -2.5, STAIR_HOLE.end.y - 0.5)],

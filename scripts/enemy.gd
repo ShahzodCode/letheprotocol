@@ -236,6 +236,7 @@ var knows_player := false         # story: he knows exactly where the player is 
 var _roof_goal := Vector3.INF     # a hunter's own spot on a ring round a player standing out of reach on a roof (see _approach_goal)
 var _roof_t := 0.0
 var pace := 1.0                  # multiplies the chase speed (bunching at corners)
+var aim_scale := 1.0              # multiplies his shot spread at the player (the soldiers feeling their way down into the dark cellar, HomeScene)
 var fatigue := 1.0                # multiplies the stamina drain of running (the two stragglers of the chase)
 var damage_scale := 1.0           # multiplies the damage he takes
 var passive := false              # the Commander scene (LanderInterior): he never notices, wakes or answers a shot; he only turns to the player (set `state` ALERT for the raised rifle)
@@ -1737,7 +1738,7 @@ func _fire_bolt() -> void:
 		target = aim_point
 	else:
 		var hspeed := Vector2(player.velocity.x, player.velocity.z).length()
-		spread = deg_to_rad(float(cfg["spread"])) * (1.0 + hspeed * 0.12)
+		spread = deg_to_rad(float(cfg["spread"])) * (1.0 + hspeed * 0.12) * aim_scale
 	var dir := (target - from).normalized()
 	if spread > 0.0:
 		var ax := dir.cross(Vector3.UP)

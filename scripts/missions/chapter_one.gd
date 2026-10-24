@@ -65,7 +65,7 @@ static func build() -> Mission:
 			"on_start": func(_mm: Mission) -> void: _main().home.begin_cellar_door()}),
 		Mission.obj("mother", "MUM", {"type": "script", "marker_pos": HomeScene.MOTHER_AT,
 			"on_start": func(_mm: Mission) -> void: _main().home.begin_mother()}),
-		Mission.obj("five_more", "FIVE MORE - KEEP THEM AWAY FROM MIRA", {"type": "kill_group", "group": HomeScene.FIVE_GROUP,
+		Mission.obj("five_more", "FIVE MORE - KEEP THEM AWAY FROM MIRA", {"type": "script",
 			"on_start": func(_mm: Mission) -> void: _main().home.begin_five()}),
 		Mission.obj("back_to_mira", "GO BACK TO MIRA", {"pos": City.CELLAR_POS, "radius": 2.5, "vertical": 2.0,
 			"on_start": func(_mm: Mission) -> void: _main().home.begin_back()}),

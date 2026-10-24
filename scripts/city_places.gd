@@ -157,42 +157,69 @@ static func _home() -> void:
 	var ah := City.APT_H
 	var door_a := o.y + 4.4
 	var door_b := o.y + 5.6
+	var iw := City.HOME_IN.x
+	var iv := City.HOME_IN.y
+	var back_a := o.x + 8.0           # the back door onto the yard (south wall)
+	var back_b := o.x + 9.2
 	var boxes: Array = _wall(hr.position.x + 0.2, hr.position.y, hr.end.y, 0.4, false, [[door_a, door_b]], ah, 2.2)   # west wall with the front door
-	boxes.append(_bx(Rect2(o.x + 14.0, hr.position.y, 0.4, hr.size.y), 0.0, ah))
-	boxes.append(_bx(Rect2(o.x, hr.position.y, 14.0, 0.4), 0.0, ah))
-	boxes.append(_bx(Rect2(o.x, o.y + 10.0, 14.0, 0.4), 0.0, ah))
+	boxes.append(_bx(Rect2(o.x + iw, hr.position.y, 0.4, hr.size.y), 0.0, ah))
+	boxes.append(_bx(Rect2(o.x, hr.position.y, iw, 0.4), 0.0, ah))
+	boxes.append_array(_wall(o.y + iv + 0.2, o.x, o.x + iw, 0.4, true, [[back_a, back_b]], ah, 2.2))
 	boxes.append(_bx(hr, ah, City.HOME_H))                                       # the three floors above are one solid block
 	City.buildings.append({"rect": hr, "boxes": boxes, "nav_rects": [hr], "style": 0.1, "color": Color(0.78, 0.6, 0.48),
 		"h": City.HOME_H, "no_slab": true, "home": true})
 	# linings on the inside of the outer walls, the ceiling and the floors
-	_liner(Rect2(o.x, o.y, 14.0, 0.1), 0.0, ah, INTERIOR)
-	_liner(Rect2(o.x, o.y + 9.9, 14.0, 0.1), 0.0, ah, INTERIOR)
-	_liner(Rect2(o.x + 13.9, o.y, 0.1, 10.0), 0.0, ah, INTERIOR)
+	_liner(Rect2(o.x, o.y, iw, 0.1), 0.0, ah, INTERIOR)
+	_liner(Rect2(o.x, o.y + iv - 0.1, back_a - o.x, 0.1), 0.0, ah, INTERIOR)
+	_liner(Rect2(back_b, o.y + iv - 0.1, o.x + iw - back_b, 0.1), 0.0, ah, INTERIOR)
+	_liner(Rect2(o.x + iw - 0.1, o.y, 0.1, iv), 0.0, ah, INTERIOR)
 	_liner(Rect2(o.x, o.y, 0.1, door_a - o.y), 0.0, ah, INTERIOR)
-	_liner(Rect2(o.x, door_b, 0.1, o.y + 10.0 - door_b), 0.0, ah, INTERIOR)
-	_liner(Rect2(o.x, o.y, 14.0, 10.0), ah - 0.1, ah, Color(0.93, 0.92, 0.89))
-	for piece in cut(Rect2(o, Vector2(14.0, 10.0)), [City.STAIR_HOLE]):
+	_liner(Rect2(o.x, door_b, 0.1, o.y + iv - door_b), 0.0, ah, INTERIOR)
+	_liner(Rect2(o.x, o.y, iw, iv), ah - 0.1, ah, Color(0.93, 0.92, 0.89))
+	for piece in cut(Rect2(o, City.HOME_IN), [City.STAIR_HOLE]):
 		City.ground_slabs.append([piece, Color(0.55, 0.4, 0.27), 2])
 	City.ground_slabs.append([Rect2(o, Vector2(6.0, 3.4)), Color(0.78, 0.74, 0.66), 3])                 # kitchen tiles
 	City.ground_slabs.append([Rect2(o.x, o.y + 6.6, 3.0, 3.4), Color(0.7, 0.78, 0.8), 3])               # bathroom tiles
-	# partition walls (0.2 m thick, doorways 1.2 m wide, doors 2.2 m high)
+	City.ground_slabs.append([Rect2(o.x, o.y + 10.0, 14.0, iv - 10.0), Color(0.5, 0.5, 0.48), 3])       # the back hall's concrete
+	City.ground_slabs.append([Rect2(back_a, o.y + iv, back_b - back_a, 0.4), Color(0.5, 0.5, 0.48), 3])  # the back door's sill
+	# partition walls (0.2 m thick, doorways 1.2 m wide, doors 2.2 m high). Rooms: kitchen, hallway, living room, bathroom, the cellar stairs,
+	# the parents' bedroom (the old flat); Mira's room and the study (the east wing, u 14..19.6) and the back hall (v 10..13.6). The doors make
+	# loops (hallway - bathroom - back hall - bedroom - living room, and living room - Mira's room - study - back hall) so a fight can move round.
 	var walls: Array = []
 	walls.append_array(_wall(o.y + 3.4, o.x, o.x + 6.0, 0.2, true, [[o.x + 2.0, o.x + 3.2]], ah, 2.2))                                   # kitchen | hallway
 	walls.append_array(_wall(o.x + 6.0, o.y, o.y + 6.6, 0.2, false, [[o.y + 4.5, o.y + 5.7]], ah, 2.2))                                  # kitchen + hallway | living room
 	walls.append_array(_wall(o.y + 6.6, o.x, o.x + 14.0, 0.2, true, [[o.x + 0.9, o.x + 2.1], [o.x + 3.2, o.x + 4.4], [o.x + 9.0, o.x + 10.2]], ah, 2.2))   # bathroom, stairs, bedroom
 	walls.append_array(_wall(o.x + 3.0, o.y + 6.6, o.y + 10.0, 0.2, false, [], ah, 2.2))
 	walls.append_array(_wall(o.x + 4.6, o.y + 6.6, o.y + 10.0, 0.2, false, [], ah, 2.2))
+	walls.append_array(_wall(o.y + 10.0, o.x, o.x + 14.0, 0.2, true, [[o.x + 1.6, o.x + 2.8], [o.x + 6.0, o.x + 7.2]], ah, 2.2))          # bathroom, bedroom | back hall
+	walls.append_array(_wall(o.x + 14.0, o.y, o.y + iv, 0.2, false, [[o.y + 2.4, o.y + 3.6], [o.y + 6.8, o.y + 8.0], [o.y + 11.2, o.y + 12.4]], ah, 2.2))   # the east wing
+	walls.append_array(_wall(o.y + 6.6, o.x + 14.0, o.x + iw, 0.2, true, [[o.x + 16.5, o.x + 17.7]], ah, 2.2))                          # Mira's room | study
 	for w in walls:
 		_prop(w["rect"], w["y0"], w["y1"], PARTITION, "home")
-	# furniture: the kitchen counter (cover!), sofa, table, bed, bathtub
+	# furniture: the kitchen counter (cover!), sofa, table, bed, bathtub (along the bathroom's west wall, clear of the back hall door)
 	_prop(Rect2(o.x + 0.4, o.y + 0.15, 4.2, 0.7), 0.0, 1.0, Color(0.5, 0.5, 0.52), "home")
 	_prop(Rect2(o.x + 0.15, o.y + 0.85, 0.7, 2.0), 0.0, 1.0, Color(0.5, 0.5, 0.52), "home")
 	_prop(Rect2(o.x + 8.0, o.y + 0.3, 3.2, 0.9), 0.0, 0.8, Color(0.3, 0.38, 0.5), "home")
 	_prop(Rect2(o.x + 9.0, o.y + 3.0, 1.6, 1.0), 0.0, 0.55, Color(0.45, 0.32, 0.2), "home")
-	_prop(Rect2(o.x + 11.4, o.y + 7.1, 2.4, 2.3), 0.0, 0.6, Color(0.7, 0.35, 0.35), "home")
-	_prop(Rect2(o.x + 0.2, o.y + 8.9, 2.6, 0.9), 0.0, 0.6, Color(0.9, 0.92, 0.94), "home")
+	_prop(Rect2(o.x + 11.0, o.y + 8.0, 2.4, 1.85), 0.0, 0.6, Color(0.7, 0.35, 0.35), "home")
+	_prop(Rect2(o.x + 0.15, o.y + 7.2, 0.7, 2.2), 0.0, 0.6, Color(0.9, 0.92, 0.94), "home")
+	# Mira's room: her bed, a wardrobe, a toy chest
+	_prop(Rect2(o.x + 17.6, o.y + 0.3, 1.8, 1.0), 0.0, 0.5, Color(0.85, 0.55, 0.7), "home")
+	_prop(Rect2(o.x + 18.8, o.y + 3.6, 0.65, 2.0), 0.0, 2.0, Color(0.62, 0.48, 0.34), "home")
+	_prop(Rect2(o.x + 15.2, o.y + 0.25, 1.0, 0.6), 0.0, 0.6, Color(0.35, 0.55, 0.75), "home")
+	# the study (the father's): a desk, a bookshelf, a filing cabinet
+	_prop(Rect2(o.x + 18.0, o.y + 7.0, 1.4, 0.8), 0.0, 0.78, Color(0.45, 0.3, 0.2), "home")
+	_prop(Rect2(o.x + 19.0, o.y + 9.0, 0.45, 3.6), 0.0, 2.0, Color(0.4, 0.28, 0.18), "home")
+	_prop(Rect2(o.x + 15.0, o.y + 12.6, 1.4, 0.8), 0.0, 1.1, Color(0.45, 0.47, 0.5), "home")
+	# the back hall: a washing machine, a shelf of tins, stacked crates (cover in the middle of the long room)
+	_prop(Rect2(o.x + 0.2, o.y + 12.6, 0.8, 0.8), 0.0, 0.9, Color(0.88, 0.88, 0.9), "home")
+	_prop(Rect2(o.x + 3.4, o.y + 13.05, 3.4, 0.4), 0.0, 1.8, Color(0.5, 0.42, 0.32), "home")
+	_prop(Rect2(o.x + 10.4, o.y + 11.2, 1.2, 1.0), 0.0, 1.0, Color(0.55, 0.45, 0.3), "home")
+	_prop(Rect2(o.x + 4.0, o.y + 10.9, 0.9, 0.9), 0.0, 0.9, Color(0.55, 0.45, 0.3), "home")
 	_breakfast(o)
 	City.lights.append({"pos": Vector3(o.x + 7.0, 2.6, o.y + 5.0), "range": 14.0, "energy": 1.3, "color": Color(1.0, 0.92, 0.75)})
+	City.lights.append({"pos": Vector3(o.x + 16.8, 2.6, o.y + 6.6), "range": 10.0, "energy": 1.0, "color": Color(1.0, 0.92, 0.75)})
+	City.lights.append({"pos": Vector3(o.x + 8.0, 2.6, o.y + 11.8), "range": 10.0, "energy": 0.8, "color": Color(1.0, 0.9, 0.7)})
 	# warm lights on the street side so the house reads from the avenue
 	_decor(Vector3(hr.position.x - 0.05, 2.55, o.y + 5.0), Vector3(0.15, 0.25, 1.8), Color(1.0, 0.8, 0.4), true)
 	for wz in [o.y + 1.8, o.y + 8.4]:
