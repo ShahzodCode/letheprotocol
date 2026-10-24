@@ -91,6 +91,8 @@ const EXHAUSTED_STAMINA := 6.0      # his stamina while he sits: he pants loudly
 const SIT_HIT_SCALE := 0.88         # hit boxes squashed while an exhausted soldier is bent over (static boxes only: clip models' boxes follow the bones)
 const TRUDGE_SPEED := 0.85          # an exhausted soldier drags himself along at this speed (m/s)
 const TAKEDOWN_STRUGGLE := 0.55     # seconds the victim of a takedown thrashes before the death clip takes him down
+const LUNGE_SPEED := 3.2            # blade fighter: steps in at this speed from late in the wind-up ...
+const LUNGE_AFTER := 0.12           # ... until this long after the blow
 const SUSPECT_LOOK_TIME := 8.0      # at the body: looks around this long...
 const SUSPECT_SEARCH_TIME := 15.0   # ...then searches nearby points this long, then goes back to wandering
 const SUSPECT_FOV_MULT := 1.25      # a suspicious soldier's vision cone is 25% wider
@@ -254,6 +256,8 @@ var model: CharModel                  # the skinned soldier (see CharModel)
 var gun: Node3D                      # the weapon in his hands (grip at its origin)
 var hit_root: Node3D                 # hit boxes live here (squashed while the marksman crouches)
 var _melee_played := false
+var _swung := false                 # blade fighter: the blow of this attack has landed (follow-through and recovery until the next wind-up)
+var _swing_side := 1.0              # which way his body turns through the cut (alternates blow by blow)
 var _aim_pose := 0.0
 var muzzle: Node3D
 var laser: MeshInstance3D
@@ -842,6 +846,7 @@ func _physics_process(delta: float) -> void:
 	flinch = move_toward(flinch, 0.0, delta * 5.0)
 	if model.layer != null:
 		model.layer.step(delta)
+		_swing_layer()
 	knock = knock.move_toward(Vector3.ZERO, KNOCK_DECAY * delta * maxf(1.0, knock.length() * 0.6))
 
 	var want := Vector3.ZERO     # desired horizontal velocity
@@ -959,10 +964,16 @@ func _physics_process(delta: float) -> void:
 					_give_up_hunt()
 			State.ATTACK:
 				_face(to_player, delta, 12.0)
+				# he steps into the blow: a short lunge from late in the wind-up to just after the cut
+				var lunge := (cooldown <= 0.0 and attack_t > melee_windup * 0.6) or (_swung and melee_cooldown - cooldown < LUNGE_AFTER)
+				if lunge and dist > 1.1:
+					var ldir := Vector3(to_player.x, 0.0, to_player.z).normalized()
+					want = ldir * LUNGE_SPEED
 				if cooldown <= 0.0:
 					attack_t += delta
 					if attack_t >= melee_windup and not strike_done:
 						strike_done = true
+						_swung = true
 						_strike(dist)
 				if strike_done and cooldown <= 0.0:
 					cooldown = melee_cooldown
@@ -1540,6 +1551,29 @@ func takedown(from: Vector3 = Vector3.INF) -> void:
 	_die(Vector3.ZERO, true)
 
 
+## Blade fighter (clip models): the procedural swing on top of the melee clip (`PoseLayer.swing`). Through the wind-up he
+## coils (turns away, leans back, raises the arm), late in it he whips through, holds the follow-through for a beat after
+## the blow and recovers during the cooldown. The next wind-up turns the other way.
+func _swing_layer() -> void:
+	if state != State.ATTACK:
+		_swung = false
+		model.layer.swing(0.0, 0.0, _swing_side)
+		return
+	if _swung and cooldown > 0.0:
+		var since := melee_cooldown - cooldown
+		model.layer.swing(0.0, 1.0 - smoothstep(0.1, 0.55, since), _swing_side)
+		return
+	if _swung:
+		_swung = false
+		_swing_side = -_swing_side
+		_melee_played = false            # the next wind-up plays the melee clip again
+	if cooldown > 0.0:
+		model.layer.swing(0.0, 0.0, _swing_side)
+		return
+	var w := clampf(attack_t / maxf(melee_windup, 0.05), 0.0, 1.0)
+	model.layer.swing(smoothstep(0.0, 0.6, w) * (1.0 - smoothstep(0.7, 1.0, w)), smoothstep(0.7, 1.0, w), _swing_side)
+
+
 func _strike(dist: float) -> void:
 	Sfx.play_at(get_tree().current_scene, global_position + Vector3(0, 1.3, 0), "swing", -4.0, 1.0 if kind == "soldier" else 1.5, 30.0)
 	var to := player.global_position - global_position
@@ -1850,7 +1884,13 @@ func _animate_clips(delta: float, speed: float, aiming: bool) -> void:
 	elif reloading and model.has_anim("reload"):
 		model.play("reload", model.clip_length("reload") / maxf(reload_left + 0.4, 0.5))
 	elif state == State.ATTACK and model.has_anim("melee"):
-		if not _melee_played:
+		if _swung and cooldown > 0.0:
+			# after the blow: the next wind-up plays the clip again (it used to play only on the first swing), and once
+			# the clip has run out he settles into his stance meanwhile instead of freezing on its last frame
+			_melee_played = false
+			if model.current == "melee" and not model.player.is_playing():
+				model.play("idle", 1.0, 0.25)
+		elif cooldown <= 0.0 and not _melee_played:
 			_melee_played = true
 			model.play_once("melee", model.clip_length("melee") / maxf(melee_windup + 0.15, 0.3))
 	elif state == State.ATTACK:

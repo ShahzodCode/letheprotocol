@@ -9,6 +9,7 @@ const ATTACK := 40.0          # how fast a new flinch / recoil snaps in (per sec
 const FLINCH_DECAY := 4.5     # a flinch is gone after about 0.3 s
 const RECOIL_DECAY := 14.0
 const TD_RELEASE := 8.0       # the takedown pose lets go this fast when the death clip takes over
+const SWING_SNAP := 45.0      # how fast the blade fighter's cut comes in
 
 var roles := {}
 var _flinch := 0.0            # target 0..1
@@ -20,6 +21,11 @@ var _recoil_shown := 0.0
 var _td := 0.0                # takedown struggle 0..1 (target)
 var _td_shown := 0.0
 var _td_sign := 1.0           # +1 pulled back from behind, -1 doubled over a blade from the front
+var _coil := 0.0              # blade swing: wound up (torso turned away, leaning back, sword arm raised) 0..1
+var _coil_shown := 0.0
+var _cut := 0.0               # blade swing: driven through (torso turned into the blow, leaning in, arm forward) 0..1
+var _cut_shown := 0.0
+var _swing_side := 1.0        # which way the torso turns through the cut (alternates)
 
 
 ## A hit from skeleton-space direction `dir` (the way the bullet flies). `part` is the hit box part, `power` 0..1.
@@ -41,8 +47,16 @@ func takedown(k: float, sign_: float = 1.0) -> void:
 	_td_sign = sign_
 
 
+## A blade swing on top of the melee clip: `coil` 0..1 winds him up, `cut` 0..1 drives him through; `side` +1 / -1.
+func swing(coil: float, cut: float, side: float) -> void:
+	_coil = clampf(coil, 0.0, 1.0)
+	_cut = clampf(cut, 0.0, 1.0)
+	_swing_side = side
+
+
 func is_idle() -> bool:
-	return _flinch < 0.002 and _flinch_shown < 0.002 and _recoil < 0.002 and _recoil_shown < 0.002 and _td < 0.002 and _td_shown < 0.002
+	return _flinch < 0.002 and _flinch_shown < 0.002 and _recoil < 0.002 and _recoil_shown < 0.002 and _td < 0.002 and _td_shown < 0.002 \
+		and _coil < 0.002 and _coil_shown < 0.002 and _cut < 0.002 and _cut_shown < 0.002
 
 
 func flinch_amount() -> float:
@@ -62,14 +76,23 @@ func step(delta: float) -> void:
 		_recoil_shown = 0.0
 	if _td < 0.002 and _td_shown < 0.002:
 		_td_shown = 0.0
+	# the wind-up eases in, the cut snaps in (it is the fast part)
+	_coil_shown = lerpf(_coil_shown, _coil, 1.0 - exp(-(14.0 if _coil > _coil_shown else 30.0) * delta))
+	_cut_shown = lerpf(_cut_shown, _cut, 1.0 - exp(-(SWING_SNAP if _cut > _cut_shown else 9.0) * delta))
+	if _coil < 0.002 and _coil_shown < 0.002:
+		_coil_shown = 0.0
+	if _cut < 0.002 and _cut_shown < 0.002:
+		_cut_shown = 0.0
 
 
 func _process_modification() -> void:
 	var sk := get_skeleton()
-	if sk == null or (_flinch_shown <= 0.0 and _recoil_shown <= 0.0 and _td_shown <= 0.0):
+	if sk == null or (_flinch_shown <= 0.0 and _recoil_shown <= 0.0 and _td_shown <= 0.0 and _coil_shown <= 0.0 and _cut_shown <= 0.0):
 		return
 	if _td_shown > 0.0:
 		_apply_takedown(sk, _td_shown)
+	if _coil_shown > 0.0 or _cut_shown > 0.0:
+		_apply_swing(sk, _coil_shown, _cut_shown)
 	if _flinch_shown > 0.0:
 		_apply_flinch(sk, _flinch_shown)
 	if _recoil_shown > 0.0:
@@ -128,6 +151,29 @@ func _apply_takedown(sk: Skeleton3D, k: float) -> void:
 	_turn(sk, "RightUpLeg", Vector3.LEFT, 0.35 * k)
 	_turn(sk, "LeftLeg", Vector3.LEFT, -0.5 * k)
 	_turn(sk, "RightLeg", Vector3.LEFT, -0.5 * k)
+
+
+## The blade fighter's swing: wound up he turns his torso away from the cut, leans back and lifts the sword arm (the
+## anticipation you can read from a distance); through the cut the torso whips round the other way, he leans into it and
+## the arm drives forward and across. The hips turn less than the shoulders, the head stays on the target.
+func _apply_swing(sk: Skeleton3D, coil: float, cut: float) -> void:
+	var s := _swing_side
+	var twist := (0.32 * coil - 0.42 * cut) * s
+	var back := Vector3.UP.cross(Vector3.FORWARD)          # tips the top toward -z, away from the way he faces
+	var lean := 0.1 * coil - 0.16 * cut                     # back while winding up, forward into the cut
+	_turn(sk, "Hips", Vector3.UP, twist * 0.3)
+	_turn(sk, "Spine", Vector3.UP, twist * 0.3)
+	_turn(sk, "Spine1", Vector3.UP, twist * 0.35)
+	_turn(sk, "Spine2", Vector3.UP, twist * 0.35)
+	_turn(sk, "Spine1", back, lean)
+	_turn(sk, "Spine2", back, lean)
+	_turn(sk, "Head", Vector3.UP, -twist * 0.6)             # eyes stay on him
+	_turn(sk, "RightArm", Vector3.BACK, -0.55 * coil + 0.2 * cut)
+	_turn(sk, "RightArm", Vector3.LEFT, -0.25 * coil + 0.5 * cut)
+	_turn(sk, "RightForeArm", Vector3.LEFT, 0.35 * coil - 0.2 * cut)
+	_turn(sk, "LeftArm", Vector3.BACK, 0.25 * cut)          # the free arm swings out for balance
+	_turn(sk, "LeftUpLeg", Vector3.LEFT, 0.18 * cut)         # a step into the blow: front knee bends
+	_turn(sk, "LeftLeg", Vector3.LEFT, -0.22 * cut)
 
 
 ## Rotate the bone of `role` by `angle` about `axis` (skeleton space), on top of its current pose.

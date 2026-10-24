@@ -32,6 +32,11 @@ var notice := ""              # short toast for the HUD ("+1 MAG ...")
 var notice_t := 0.0
 var melee_t := 0.0            # swing animation time left
 var _melee_hit_pending := false
+var _stroke := 0              # index into STROKES of the swing in progress
+var _stroke_k := 1.0          # this swing's size (a little different every time)
+var _last_slash := 1          # forehand and backhand take turns
+var _last_swing_ms := 0
+var _melee_stop := 0.0        # hit-stop: the blade sticks for a moment when it connects
 # frag grenades: hold G for the arc preview, release (or just tap) to throw
 const THROW_TIME := 0.45           # throw animation
 const PREVIEW_DELAY := 0.18        # held longer than this: the arc shows; a quick tap throws at once
@@ -45,6 +50,7 @@ var wound_arm_node: Node3D
 var _arc_dots: MultiMeshInstance3D
 var _arc_ring: MeshInstance3D
 var takedown_t := 0.0         # stab animation time left
+var _td_jolted := false       # the takedown's blade has gone in (camera jolt and stab sound played)
 var takedown_target: Enemy = null     # an unaware enemy in reach and from behind: E / LMB kills him silently
 
 var cooldown := 0.0
@@ -537,9 +543,14 @@ func _physics_process(delta: float) -> void:
 	var down := Input.is_action_pressed("fire")
 	var pressed := down and not _trigger_was_down
 	_trigger_was_down = down
-	melee_t = maxf(0.0, melee_t - delta)
-	if _melee_hit_pending and melee_t <= MELEE_SWING_TIME * 0.5:
+	if _melee_stop > 0.0:
+		_melee_stop -= delta
+	else:
+		melee_t = maxf(0.0, melee_t - delta)
+	if _melee_hit_pending and melee_t <= MELEE_SWING_TIME * (1.0 - MELEE_HIT_AT):
 		_melee_hit_pending = false
+		var kick_dir := [1.0, -1.0, 0.0][_stroke] as float      # the view is tugged along the stroke
+		player.add_recoil(-0.5 if _stroke == 2 else -0.15, 0.7 * kick_dir, 9.0)
 		_melee_strike()
 	takedown_t = maxf(0.0, takedown_t - delta)
 	takedown_target = find_takedown()
@@ -799,14 +810,43 @@ func _hide_preview() -> void:
 
 # ---------------------------------------------------------------- melee
 
-const MELEE_SWING_TIME := 0.3
+const MELEE_SWING_TIME := 0.34
+const MELEE_HIT_AT := 0.39          # the blow lands this far into the swing: the middle of the fast arc
+const MELEE_HITSTOP := 0.055        # the blade sticks in for a moment when it connects
 const TAKEDOWN_TIME := 0.6          # grab, stab, lower him: lasts as long as the victim's struggle (Enemy.TAKEDOWN_STRUGGLE)
+# phases of a swing as fractions of MELEE_SWING_TIME: wind up (cock the blade), the fast arc, follow-through, then recovery
+const SW_WIND := 0.28
+const SW_ARC := 0.5
+const SW_THROUGH := 0.64
+# strokes, offsets from the resting pose: [cocked pos, cocked rot, mid-arc pos, mid-arc rot, follow-through pos, rot]
+# (rot: x = tip up, y = tip to the left, z = roll)
+const STROKES := [
+	# forehand: cocked out to the right with the tip back, snaps across and down to the left
+	[Vector3(0.13, 0.06, 0.07), Vector3(0.25, -0.95, 0.7), Vector3(0.0, 0.0, -0.16), Vector3(-0.05, 0.15, 0.55),
+		Vector3(-0.3, -0.08, -0.03), Vector3(-0.2, 1.05, 0.35)],
+	# backhand: the hand crosses to the left, the edge comes back across to the right
+	[Vector3(-0.17, 0.05, 0.05), Vector3(0.2, 0.85, -0.75), Vector3(0.02, 0.0, -0.16), Vector3(-0.05, -0.1, -0.6),
+		Vector3(0.2, -0.07, -0.02), Vector3(-0.15, -1.0, -0.35)],
+	# stab: drawn back and up beside the cheek, driven straight in
+	[Vector3(0.04, 0.07, 0.16), Vector3(0.45, -0.12, 0.15), Vector3(-0.06, -0.03, -0.32), Vector3(-0.2, 0.08, 0.0),
+		Vector3(-0.07, -0.05, -0.37), Vector3(-0.3, 0.1, 0.05)],
+]
 
 
 func _melee_swing() -> void:
 	cooldown = 60.0 / float(stats()["rpm"])
 	melee_t = MELEE_SWING_TIME
 	_melee_hit_pending = true
+	_melee_stop = 0.0
+	if Time.get_ticks_msec() - _last_swing_ms > 1200:
+		_last_slash = 1                 # a fresh attack opens with the forehand
+	_last_swing_ms = Time.get_ticks_msec()
+	if _stroke != 2 and _rng.randf() < 0.22:
+		_stroke = 2
+	else:
+		_last_slash = 1 - _last_slash
+		_stroke = _last_slash
+	_stroke_k = _rng.randf_range(0.88, 1.12)
 	ads_k = 0.0
 	Sfx.play(self, "swing", -4.0, float(stats().get("sound_pitch", 1.0)))
 
@@ -843,6 +883,7 @@ func find_takedown() -> Enemy:
 func _do_takedown(en: Enemy) -> void:
 	cooldown = 0.7
 	takedown_t = TAKEDOWN_TIME
+	_td_jolted = false
 	melee_t = 0.0
 	_melee_hit_pending = false
 	ads_k = 0.0
@@ -850,7 +891,7 @@ func _do_takedown(en: Enemy) -> void:
 	en.takedown(player.global_position)
 	takedown_target = null
 	hit_marker.emit(false, true)
-	Sfx.play(self, "stab", -2.0)
+	player.add_recoil(-0.6, 0.0, 6.0)          # lunging in for the grab: the view dips (the stab sound plays when the blade goes in)
 
 
 ## Mid-swing: the nearest enemy in front, inside reach, with a clear line takes the blow.
@@ -887,6 +928,8 @@ func _melee_strike() -> void:
 	Game.shots_hit += 1
 	var killed := best.take_hit(float(s["damage"]), "body", dir * float(s["impulse"]) * 1.5, chest_pt)
 	hit_marker.emit(false, killed)
+	_melee_stop = MELEE_HITSTOP
+	player.add_recoil(-0.4, 0.5 * ([1.0, -1.0, 0.0][_stroke] as float), 9.0)
 	Sfx.play(self, "hit", -4.0)
 	Sfx.play_at(get_tree().current_scene, chest_pt, "thump", 0.0)
 
@@ -1317,33 +1360,50 @@ func _process(delta: float) -> void:
 		var dip := sin(PI * k)
 		pos += Vector3(-0.04 * dip, -0.16 * dip, 0.03 * dip)
 		rot += Vector3(-0.55 * dip, 0.15 * dip, 0.5 * dip)
+	var snap := false               # the fast part of a stroke: the viewmodel follows its pose without smoothing
+	if is_melee() and melee_t <= 0.0 and takedown_t <= 0.0:
+		# at rest the blade breathes a little in the hand
+		var tt := Time.get_ticks_msec() * 0.001
+		pos += Vector3(0.003 * sin(tt * 0.7), 0.004 * sin(tt * 1.4), 0.0)
+		rot += Vector3(0.015 * sin(tt * 1.4 + 0.5), 0.0, 0.03 * sin(tt * 0.7))
 	if melee_t > 0.0:
-		# slash: wind back, then sweep across the view
 		var mk := 1.0 - melee_t / MELEE_SWING_TIME           # 0 -> 1
-		var sweep := sin(PI * mk)
-		var yaw_s := lerpf(0.9, -1.3, mk)
-		pos += Vector3(0.12 - 0.35 * mk, 0.04 * sweep, -0.12 * sweep)
-		rot += Vector3(-0.3 * sweep, yaw_s, 0.5 * (1.0 - mk) - 0.2)
+		var pr := _stroke_pose(mk)
+		pos += pr[0]
+		rot += pr[1]
+		snap = mk > SW_WIND - 0.04 and mk < SW_THROUGH
 	if grenade_k > 0.0:
 		# the weapon dips while the other arm winds up and throws
 		pos += Vector3(0.08, -0.22, 0.06) * grenade_k
 		rot += Vector3(-0.45, 0.0, 0.25) * grenade_k
 	if takedown_t > 0.0:
-		# takedown, the attacker's half (the victim's half is Enemy.takedown): the left arm clamps over his mouth while the
-		# blade is drawn back, drives in, then both lower him and the knife comes free
+		# takedown, the attacker's half (the victim's half is Enemy.takedown): the left hand clamps over his mouth while the
+		# blade is cocked back; it drives in hard, shudders, twists; both arms lower him, then the knife pulls free
 		var tk := 1.0 - takedown_t / TAKEDOWN_TIME
-		var wind := smoothstep(0.0, 0.25, tk) * (1.0 - smoothstep(0.25, 0.4, tk))
-		var thrust := sin(PI * clampf((tk - 0.25) / 0.3, 0.0, 1.0))
-		var lower := smoothstep(0.5, 0.7, tk) * (1.0 - smoothstep(0.8, 1.0, tk))
-		pos += Vector3(0.06 * wind - 0.1 * thrust, 0.03 * wind - 0.04 * thrust - 0.07 * lower, 0.1 * wind - 0.42 * thrust + 0.05 * lower)
-		rot += Vector3(0.35 * wind - 0.75 * thrust - 0.2 * lower, 0.2 * thrust, 0.0)
+		var cock := smoothstep(0.0, 0.16, tk) * (1.0 - smoothstep(0.16, 0.26, tk))
+		var drive := smoothstep(0.16, 0.26, tk) * (1.0 - smoothstep(0.8, 0.97, tk))
+		var twist := smoothstep(0.32, 0.46, tk) * (1.0 - smoothstep(0.78, 0.92, tk))
+		var lower := smoothstep(0.45, 0.75, tk) * (1.0 - smoothstep(0.84, 1.0, tk))
+		var shudder := sin(tk * 110.0) * smoothstep(0.24, 0.27, tk) * (1.0 - smoothstep(0.27, 0.45, tk))
+		pos += Vector3(0.05, 0.07, 0.14) * cock + Vector3(-0.12, -0.05, -0.4) * drive + Vector3(0.0, -0.11, 0.04) * lower \
+			+ Vector3(0.006, 0.004, 0.0) * shudder
+		rot += Vector3(0.55, -0.1, 0.3) * cock + Vector3(-0.85, 0.2, -0.1) * drive + Vector3(0.0, 0.0, 0.55) * twist \
+			+ Vector3(-0.25, 0.0, 0.0) * lower + Vector3(0.0, 0.0, 0.05) * shudder
+		snap = tk > 0.14 and tk < 0.5
+		if not _td_jolted and tk >= 0.24:
+			_td_jolted = true                        # the blade is in: the view jolts and the stab is heard now
+			player.add_recoil(-1.3, 0.4, 7.0)
+			Sfx.play(self, "stab", -2.0)
 	if grab_arm != null:
 		var gk := 0.0
 		if takedown_t > 0.0:
 			var tg := 1.0 - takedown_t / TAKEDOWN_TIME
-			gk = smoothstep(0.0, 0.2, tg) * (1.0 - smoothstep(0.75, 1.0, tg))
-			grab_arm.position = Vector3(-0.2 + 0.2 * gk, -0.34 + 0.14 * gk - 0.08 * smoothstep(0.5, 0.8, tg), -0.2 - 0.32 * gk)
-			grab_arm.rotation = Vector3(0.9 - 1.1 * gk, 0.0, 0.0)
+			var reach_k := clampf(tg / 0.14, 0.0, 1.0)
+			gk = (1.0 - pow(1.0 - reach_k, 3.0)) * (1.0 - smoothstep(0.82, 1.0, tg))      # shoots out and clamps, lets go at the end
+			var yank := smoothstep(0.2, 0.28, tg) * (1.0 - smoothstep(0.5, 0.7, tg))      # pulls him back onto the blade
+			var lower_g := smoothstep(0.45, 0.75, tg)
+			grab_arm.position = Vector3(-0.22 + 0.19 * gk, -0.36 + 0.16 * gk - 0.1 * lower_g, -0.18 - 0.34 * gk + 0.07 * yank)
+			grab_arm.rotation = Vector3(0.9 - 1.15 * gk - 0.2 * lower_g + 0.15 * yank, 0.25 * gk, 0.15 * gk)
 		grab_arm.visible = gk > 0.02 and not is_scoped()
 	if switching > 0.0:
 		var k2 := 1.0 - absf(switching / 0.32 * 2.0 - 1.0)   # 0 -> 1 -> 0
@@ -1362,9 +1422,42 @@ func _process(delta: float) -> void:
 		throw_arm.position = Vector3((0.24 - 0.12 * s2) * (-1.0 if Game.arm_injured else 1.0), -0.34 + 0.2 * s2 - 0.1 * (1.0 - grenade_k), -0.28 - 0.3 * s2)
 		throw_arm.rotation = Vector3(lerpf(0.9, -0.7, s2), 0.0, 0.0)
 		throw_arm.visible = grenade_k > 0.05 and not (swing > 0.7)
+	# drawing a blade: it flips once end over end in the hand as it comes up
+	if models.has(current):
+		var flip := 0.0
+		if is_melee() and switching > 0.0 and switching < 0.15:
+			flip = -TAU * (1.0 - pow(switching / 0.15, 3.0))
+		(models[current] as Node3D).rotation.x = flip
 	holder.visible = not is_scoped()
-	holder.position = holder.position.lerp(pos, 1.0 - exp(-30.0 * delta))
-	holder.rotation = holder.rotation.lerp(rot, 1.0 - exp(-24.0 * delta))
+	holder.position = holder.position.lerp(pos, 1.0 - exp(-(140.0 if snap else 30.0) * delta))
+	holder.rotation = holder.rotation.lerp(rot, 1.0 - exp(-(140.0 if snap else 24.0) * delta))
+
+
+## The viewmodel offset [pos, rot] of the swing in progress at `mk` (0 -> 1): ease into the cocked pose, a fast arc through
+## the middle pose (fastest where the blow lands), drift a little further, then ease back to rest.
+func _stroke_pose(mk: float) -> Array:
+	var st: Array = STROKES[_stroke]
+	var cp: Vector3 = st[0] * _stroke_k
+	var cr: Vector3 = st[1] * _stroke_k
+	var tp: Vector3 = st[4] * _stroke_k
+	var tr: Vector3 = st[5] * _stroke_k
+	if mk < SW_WIND:
+		var e := smoothstep(0.0, SW_WIND, mk)
+		return [cp * e, cr * e]
+	if mk < SW_ARC:
+		# quadratic curve from the cocked pose through the mid-arc pose to the follow-through pose
+		var a := smoothstep(SW_WIND, SW_ARC, mk)
+		var mp: Vector3 = st[2] * _stroke_k
+		var mr: Vector3 = st[3] * _stroke_k
+		var ctl_p := 2.0 * mp - 0.5 * (cp + tp)
+		var ctl_r := 2.0 * mr - 0.5 * (cr + tr)
+		var b0 := (1.0 - a) * (1.0 - a)
+		var b1 := 2.0 * a * (1.0 - a)
+		var b2 := a * a
+		return [cp * b0 + ctl_p * b1 + tp * b2, cr * b0 + ctl_r * b1 + tr * b2]
+	var over := 1.0 + 0.1 * smoothstep(SW_ARC, SW_THROUGH, mk)       # carries on a little past the end of the arc
+	var back := 1.0 - smoothstep(SW_THROUGH, 1.0, mk)
+	return [tp * over * back, tr * over * back]
 
 
 ## Where the viewmodel sits when aiming. Weapons with a .glb carry a hand-calibrated `ads_pos`; the box-built ones
