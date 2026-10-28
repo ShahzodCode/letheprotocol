@@ -492,7 +492,7 @@ func _physics_process(delta: float) -> void:
 	bloom = move_toward(bloom, 0.0, delta * 6.0)
 
 	# ADS
-	var want_ads := Input.is_action_pressed("aim") and can_aim() and not player.climbing
+	var want_ads := HoldInput.held("aim") and can_aim() and not player.climbing
 	var rate := 1.0 / maxf(0.05, float(stats()["ads_time"]))
 	ads_k = move_toward(ads_k, 1.0 if want_ads else 0.0, rate * delta)
 	_update_sway(delta)

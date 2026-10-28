@@ -114,6 +114,20 @@ const SENSE_STEP := 0.05             # a calm soldier looks and listens 20 times
 static var bodies: Array = []       # every dead Enemy / Civilian node still lying around, oldest first (one shared cap)
 const CIVILIAN_RANGE := 30.0        # a calm soldier shoots at a civilian he sees this close
 const CIVILIAN_SPREAD := 7.0        # degrees: soldiers are bad at hitting running civilians
+# ---- wounds: leg and arm hits, and the rifle dropped for the sidearm (see _wound) ----
+const DISARM_HEALTH := 0.35         # a soldier / rifleman carrying an M9 who falls below this share of his health...
+const DISARM_CHANCE := 0.5          # ...drops his rifle and draws the pistol one time in two (an arm hit down there always makes him)
+const DISARM_FUMBLE := 0.7          # seconds he fumbles for the pistol
+const LEG_SPEED := [1.0, 0.55, 0.35]   # walk / run / strafe speed after 0, 1, 2+ leg hits (for the rest of his life)
+const ARM_SPREAD := [1.0, 1.8, 2.6]    # shot spread after 0, 1, 2+ arm hits
+const ARM_PAUSE := 1.25             # an arm-hit shooter pauses this much longer between bursts
+const ARM_CHARGE := 1.4             # marksman with a hurt arm: laser charge time x this...
+const ARM_DRIFT := 1.0              # ...and his locked point is off by up to this many degrees
+const ARM_WINDUP := 1.3             # blade fighter (and the rifle-butt) with a hurt arm: wind-up x this
+const ARM_SIDE := 0.25              # static hit boxes only (no arm boxes): a body hit this far (m) off the middle counts as an arm
+const PISTOL_CFG := {               # the M9 in an enemy's hand: overrides his kind's shooting numbers
+	"engage": 26.0, "prefer": 12.0, "burst": 2, "interval": 0.35, "pause": 1.6, "dmg": 6.0, "spread": 3.4, "strafe": 2.0, "range": 60.0,
+}
 
 
 ## Register a dead body (enemy or civilian) and drop the oldest ones above the cap.
@@ -195,6 +209,12 @@ var ammo := 0
 var reloading := false
 var reload_left := 0.0
 var sidearm_ammo := -1            # >= 0: carries an M9 that drops too
+var leg_wounds := 0               # leg hits taken (slower, limps: LEG_SPEED)
+var arm_wounds := 0               # arm hits taken (aims worse, holds the arm: ARM_SPREAD)
+var leg_side := 0.0               # +1 left, -1 right: the first hurt leg / arm
+var arm_side := 0.0
+var disarmed := false             # dropped his rifle and fights with the M9
+var _disarm_rolled := false
 # stealth state
 var stamina := DEFAULT_STAMINA
 var max_stamina := DEFAULT_STAMINA
@@ -379,6 +399,8 @@ func _sphere(parent: Node3D, radius: float, squash: float, pos: Vector3, color: 
 	return mi
 
 
+## What the death screen says when this kind of soldier's shot kills the player.
+const KILLED_BY := {"soldier": "SHOT BY A SOLDIER", "rifleman": "SHOT BY A RIFLEMAN", "marksman": "SHOT BY THE MARKSMAN", "gunner": "MOWN DOWN BY A HEAVY GUNNER"}
 const MODEL_OF := {"soldier": "soldier", "rifleman": "agile", "blade": "agile", "marksman": "marksman", "gunner": "marksman"}
 ## Dull rust-coloured armour on every kind (the multiplier of the model's own colours); the blade fighter keeps his violet plasma blade (the weapon glow).
 const RUST := Color(0.86, 0.46, 0.27)
@@ -420,7 +442,7 @@ func _build_model() -> void:
 		laser = MeshInstance3D.new()
 		var lm := BoxMesh.new()
 		lm.size = Vector3(0.012, 0.012, 1.0)
-		lm.material = _mat(cfg.get("glow", Color.WHITE), true)
+		lm.material = _mat(Settings.laser_color(), true)
 		laser.mesh = lm
 		laser.top_level = true
 		laser.visible = false
@@ -511,6 +533,7 @@ func take_hit(damage: float, part: String, impulse: Vector3, point: Vector3) -> 
 	if health <= 0.0:
 		_die(impulse)
 		return true
+	_wound(part, point)
 	_aggravate(true)
 	_alert_group()
 	return false
@@ -599,6 +622,113 @@ func _drop_loot() -> void:
 			gp.keep = true
 	elif _rng.randf() < float(cfg.get("grenade", 0.0)):
 		Pickup.spawn_grenade(scene, spots[4])      # soldiers and riflemen 35%, gunners 60%
+
+
+# ---------------------------------------------------------------- wounds
+
+## A hit he lives through: a leg hit slows him and he limps, an arm hit spoils his aim and he holds the arm (both for the rest of
+## his life, worse with a second hit); low on health, a soldier / rifleman with an M9 may drop his rifle and draw it.
+func _wound(part: String, point: Vector3) -> void:
+	if passive:
+		return
+	if model.layer == null and part == "body" and absf(hit_root.to_local(point).x) > ARM_SIDE:
+		part = "arms"         # static boxes have no arms: a hit at the side of the body box
+	if part == "legs":
+		var old: float = LEG_SPEED[mini(leg_wounds, 2)]
+		leg_wounds += 1
+		if leg_wounds == 1:
+			leg_side = _hit_side(point)
+		var k: float = float(LEG_SPEED[mini(leg_wounds, 2)]) / old
+		walk_speed *= k
+		run_speed *= k
+		if model.layer != null:
+			model.layer.wound_limp(leg_side, 0.65 if leg_wounds == 1 else 1.0)
+	elif part == "arms":
+		arm_wounds += 1
+		if arm_wounds == 1:
+			arm_side = _hit_side(point)
+			melee_windup *= ARM_WINDUP
+		if model.layer != null:
+			model.layer.wound_arm(arm_side, 0.7 if arm_wounds == 1 else 1.0)
+	if sidearm_ammo >= 0 and not disarmed and ranged and float(cfg["charge"]) <= 0.0 and health <= max_health * DISARM_HEALTH:
+		var drop := part == "arms" or (not _disarm_rolled and _rng.randf() < DISARM_CHANCE)
+		_disarm_rolled = true
+		if drop:
+			_draw_sidearm(true)
+
+
+## +1 if `point` is on his left, -1 on his right (skeleton space: the model faces +z, his left is +x).
+func _hit_side(point: Vector3) -> float:
+	return 1.0 if model.skeleton.to_local(point).x > 0.0 else -1.0
+
+
+## Drops the rifle (a normal pick-up with the rounds left in it; `fumble` false = a checkpoint restore: nothing drops) and fights on
+## with the M9 he carried: the pistol in his hand, its magazine, PISTOL_CFG shooting.
+func _draw_sidearm(fumble: bool) -> void:
+	var rounds := sidearm_ammo
+	if fumble:
+		var fwd := Vector3(-sin(facing), 0.0, -cos(facing))
+		Pickup.spawn_weapon(get_tree().current_scene, global_position + fwd * 0.7, weapon_id, ammo)
+		Sfx.play_at(get_tree().current_scene, global_position + Vector3(0, 0.3, 0), "mag_out", 0.0, 0.55, 40.0)
+		stun = maxf(stun, DISARM_FUMBLE)
+		cooldown = maxf(cooldown, DISARM_FUMBLE + 0.3)
+	disarmed = true
+	_disarm_rolled = true
+	sidearm_ammo = -1
+	set_weapon("pistol")
+	ammo = maxi(rounds, 1)
+	reloading = false
+	burst_left = 0
+	_cancel_charge()
+	cfg = cfg.duplicate()
+	cfg.merge(PISTOL_CFG, true)
+	for c in gun.get_children():
+		c.queue_free()
+	var gm := GunModels.build("pistol", 1)
+	gm.position = -GunModels.grip("pistol")
+	gun.add_child(gm)
+	muzzle = Node3D.new()
+	muzzle.position = GunModels.muzzle("pistol")
+	gm.add_child(muzzle)
+
+
+## Feeds the limp the stride: how far he is through his gait clip and how fast he moves.
+func _limp_stride() -> void:
+	var t := 0.0
+	if model.player != null and model.player.current_animation != "":
+		var ln := model.player.current_animation_length
+		t = fmod(model.player.current_animation_position / ln, 1.0) if ln > 0.0 else 0.0
+	model.layer.set_stride(t, Vector2(velocity.x, velocity.z).length() / 1.2)
+
+
+## For checkpoints: what his wounds are.
+func wound_state() -> Dictionary:
+	return {"leg": leg_wounds, "arm": arm_wounds, "leg_side": leg_side, "arm_side": arm_side, "disarmed": disarmed}
+
+
+## A checkpoint restore (after add_child): the same wounds again, the M9 in hand if he had dropped his rifle (the rounds in `ammo` kept).
+func restore_wounds(w: Dictionary) -> void:
+	if w.is_empty():
+		return
+	var rounds := ammo
+	if bool(w.get("disarmed", false)):
+		sidearm_ammo = maxi(sidearm_ammo, 0)
+		_draw_sidearm(false)
+		ammo = maxi(rounds, 1)
+	var k: float = LEG_SPEED[mini(int(w.get("leg", 0)), 2)]
+	walk_speed *= k
+	run_speed *= k
+	leg_wounds = int(w.get("leg", 0))
+	arm_wounds = int(w.get("arm", 0))
+	leg_side = float(w.get("leg_side", 0.0))
+	arm_side = float(w.get("arm_side", 0.0))
+	if arm_wounds > 0:
+		melee_windup *= ARM_WINDUP
+	if model.layer != null:
+		if leg_wounds > 0:
+			model.layer.wound_limp(leg_side, 0.65 if leg_wounds == 1 else 1.0)
+		if arm_wounds > 0:
+			model.layer.wound_arm(arm_side, 0.7 if arm_wounds == 1 else 1.0)
 
 
 func _die(impulse: Vector3, silent: bool = false) -> void:
@@ -847,6 +977,8 @@ func _physics_process(delta: float) -> void:
 	if model.layer != null:
 		model.layer.step(delta)
 		_swing_layer()
+		if leg_wounds > 0:
+			_limp_stride()
 	knock = knock.move_toward(Vector3.ZERO, KNOCK_DECAY * delta * maxf(1.0, knock.length() * 0.6))
 
 	var want := Vector3.ZERO     # desired horizontal velocity
@@ -968,7 +1100,7 @@ func _physics_process(delta: float) -> void:
 				var lunge := (cooldown <= 0.0 and attack_t > melee_windup * 0.6) or (_swung and melee_cooldown - cooldown < LUNGE_AFTER)
 				if lunge and dist > 1.1:
 					var ldir := Vector3(to_player.x, 0.0, to_player.z).normalized()
-					want = ldir * LUNGE_SPEED
+					want = ldir * LUNGE_SPEED * float(LEG_SPEED[mini(leg_wounds, 2)])
 				if cooldown <= 0.0:
 					attack_t += delta
 					if attack_t >= melee_windup and not strike_done:
@@ -1580,7 +1712,7 @@ func _strike(dist: float) -> void:
 	var fwd := Vector3(-sin(facing), 0, -cos(facing))
 	var flat := Vector3(to.x, 0, to.z).normalized()
 	if dist < melee_range + 0.5 and fwd.dot(flat) > 0.35 and absf(to.y) < 2.2:
-		player.take_damage(melee_damage, global_position)
+		player.take_damage(melee_damage, global_position, "CUT DOWN BY A BLADE FIGHTER" if kind == "blade" else "BEATEN DOWN BY A SOLDIER")
 		player.velocity += flat * 3.0
 
 
@@ -1654,7 +1786,7 @@ func _shoot_step(delta: float, to_player: Vector3, dist: float) -> Array:
 			strafe_t = _rng.randf_range(1.0, 2.4)
 			side_dir = -side_dir if _rng.randf() < 0.7 else side_dir
 		if float(cfg["strafe"]) > 0.0:
-			mv += dirv.rotated(Vector3.UP, PI * 0.5) * side_dir * float(cfg["strafe"])
+			mv += dirv.rotated(Vector3.UP, PI * 0.5) * side_dir * float(cfg["strafe"]) * float(LEG_SPEED[mini(leg_wounds, 2)])
 		if dist > prefer + 6.0:
 			mv += dirv * walk_speed * 2.0
 		elif dist < prefer * (0.55 if kind != "marksman" else 0.4):
@@ -1684,15 +1816,19 @@ func _shoot_logic(delta: float, los: bool) -> void:
 				Sfx.play_at(get_tree().current_scene, muzzle.global_position, "click", 2.0, 0.5, 120.0)
 			return
 		charge_t += delta
-		if charge_t < float(cfg["charge"]) * 0.65:
+		var charge_time := float(cfg["charge"]) * (ARM_CHARGE if arm_wounds > 0 else 1.0)
+		if charge_t < charge_time * 0.65:
 			aim_point = _chest()
 		else:
+			if not aim_locked and arm_wounds > 0:       # a hurt arm: the point he locks onto is off
+				var off := Vector3(_rng.randf_range(-1.0, 1.0), _rng.randf_range(-0.6, 0.6), _rng.randf_range(-1.0, 1.0)).normalized()
+				aim_point += off * muzzle.global_position.distance_to(aim_point) * tan(deg_to_rad(ARM_DRIFT)) * _rng.randf_range(0.4, 1.0)
 			aim_locked = true
 		_update_laser()
-		if charge_t >= float(cfg["charge"]):
+		if charge_t >= charge_time:
 			_fire_bolt()
 			_cancel_charge()
-			cooldown = float(cfg["pause"]) * _rng.randf_range(0.9, 1.3)
+			cooldown = float(cfg["pause"]) * _rng.randf_range(0.9, 1.3) * (ARM_PAUSE if arm_wounds > 0 else 1.0)
 		return
 	if reloading:
 		return
@@ -1710,7 +1846,7 @@ func _shoot_logic(delta: float, los: bool) -> void:
 		shot_t = float(cfg["interval"])
 		if burst_left <= 0 or ammo <= 0:
 			burst_left = 0
-			cooldown = float(cfg["pause"]) * _rng.randf_range(0.8, 1.3)
+			cooldown = float(cfg["pause"]) * _rng.randf_range(0.8, 1.3) * (ARM_PAUSE if arm_wounds > 0 else 1.0)
 			if ammo <= 0:
 				_start_reload()
 
@@ -1754,7 +1890,11 @@ func _update_laser() -> void:
 		laser.visible = false
 		return
 	laser.visible = true
-	(laser.mesh as BoxMesh).size = Vector3(0.012 if not aim_locked else 0.03, 0.012 if not aim_locked else 0.03, len)
+	var lmat := (laser.mesh as BoxMesh).material as StandardMaterial3D
+	if lmat.albedo_color != Settings.laser_color():
+		lmat.albedo_color = Settings.laser_color()          # follows the colour-blind setting
+	var thick := (0.012 if not aim_locked else 0.03) * (1.8 if Settings.colorblind else 1.0)
+	(laser.mesh as BoxMesh).size = Vector3(thick, thick, len)
 	laser.global_position = from + dir * len * 0.5
 	laser.look_at(end, Vector3.UP if absf(dir.y) < 0.99 else Vector3.RIGHT)
 
@@ -1772,7 +1912,7 @@ func _fire_bolt() -> void:
 		target = aim_point
 	else:
 		var hspeed := Vector2(player.velocity.x, player.velocity.z).length()
-		spread = deg_to_rad(float(cfg["spread"])) * (1.0 + hspeed * 0.12) * aim_scale
+		spread = deg_to_rad(float(cfg["spread"])) * (1.0 + hspeed * 0.12) * aim_scale * float(ARM_SPREAD[mini(arm_wounds, 2)])
 	var dir := (target - from).normalized()
 	if spread > 0.0:
 		var ax := dir.cross(Vector3.UP)
@@ -1789,7 +1929,7 @@ func _fire_bolt() -> void:
 		end = hit["position"]
 		var col: Object = hit["collider"]
 		if col == player:
-			player.take_damage(float(cfg["dmg"]), global_position)
+			player.take_damage(float(cfg["dmg"]), global_position, String(KILLED_BY.get(kind, "SHOT")))
 		elif col is Area3D and (col as Area3D).has_meta("civilian"):
 			var victim: Civilian = (col as Area3D).get_meta("owner_civ")
 			if is_instance_valid(victim):

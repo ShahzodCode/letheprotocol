@@ -246,7 +246,7 @@ static func detonate(scene: Node, pos: Vector3) -> void:
 		var pd := origin.distance_to(chest)
 		pl.add_shake(pos.distance_to(pl.global_position))
 		if pd < RADIUS and _exposed(space, origin, pl.global_position, 1.0):
-			pl.take_damage(damage_at(pd), pos)
+			pl.take_damage(damage_at(pd), pos, "KILLED BY A GRENADE")
 	Game.exploded.emit(pos)
 	Game.gunshot.emit(pos, LOUDNESS)
 	Sfx.play_at(scene, pos, "explosion", 6.0, 1.0, 220.0)

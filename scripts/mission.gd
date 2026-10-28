@@ -13,6 +13,7 @@ const INTERACT_RANGE := 2.0
 const CHIME_VOLUME := -4.0
 
 static var current: Mission = null
+static var silent := false          # Main fast-forwarding to a chapter-select place: no chime per objective
 
 var id := "mission"
 var win_title := "MISSION COMPLETE"
@@ -90,7 +91,7 @@ func _complete() -> void:
 	if cb.is_valid():
 		cb.call(self)
 	Game.objective_completed.emit(String(o["id"]), String(o["text"]))
-	if Game.player != null:
+	if Game.player != null and not silent:
 		Sfx.play(Game.player, "chime", CHIME_VOLUME)
 	if index + 1 < objectives.size():
 		_start(index + 1)
@@ -159,5 +160,5 @@ func hud_text(player: Node3D) -> String:
 func interact_prompt() -> String:
 	var o := active()
 	if in_interact_range and not o.is_empty():
-		return "E - " + String(o["label"])
+		return Settings.key_name("interact") + " - " + String(o["label"])
 	return ""

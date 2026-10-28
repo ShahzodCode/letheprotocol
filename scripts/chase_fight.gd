@@ -407,7 +407,7 @@ func _wound(shooter: Enemy) -> void:
 	var pl: Player = main.player
 	var from: Vector3 = shooter.global_position if shooter != null else CityStory.court_pos()
 	pl.weapons.wound_arm()
-	pl.take_damage(clampf(WOUND_DAMAGE, 0.0, maxf(pl.health - 1.0, 0.0)), from)
+	pl.take_damage(clampf(WOUND_DAMAGE, 0.0, maxf(pl.health - 1.0, 0.0)), from, "SHOT BY A SOLDIER")
 	pl.add_shake(18.0)
 	Sfx.play(pl, "pain", -2.0)
 	pl.place_drip(pl.global_position)

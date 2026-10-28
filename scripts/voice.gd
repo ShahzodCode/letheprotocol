@@ -1,15 +1,15 @@
 class_name Voice
 extends Node
 ## The few voiced lines: clips generated once with Cartesia (Sonic 3.5) and saved in audio/voices (no API and nothing at run time but loading a WAV;
-## tools/make_voices.ps1 + tools/voice_lines.json are the older Windows-voice version of the same lines). The invaders shout in Russian with three
-## native Russian male voices (Sergei, Alexei, Dmitri; subtitles stay English), the ship intercom is a Russian woman (Natalia), the Commander is a
+## tools/make_voices.ps1 + tools/voice_lines.json are the older Windows-voice version of the same lines). The invaders shout in English with three
+## male voices (Derek, Gary, Brandon), the ship intercom is a British woman (Victoria), the Commander is a
 ## deep English voice (Ronald) at speed 0.85, the city guard an English one (Parker), the home scenes Noah (Henry), his mother (Rory) and Mira (Daisy); the Commander's kill count has clips for 1 to 30 (more: "so many"). A clip is found by hashing the subtitle that Game.radio_line shows
 ## (sha1, first 12 hex), so no line has to be registered in the code that says it. Lines without a clip are subtitles only.
 
 const DIR := "res://audio/voices/"
 ## style -> [playback pitch min, max, volume dB]. Each soldier gets his own pitch inside the range (a deep one, a thin one).
 const STYLES := {
-	"soldier": [0.95, 1.05, -2.0],          # each line already has one of three Russian voices (Cartesia); the playback pitch only varies a little
+	"soldier": [0.95, 1.05, -2.0],          # each line already has one of three English voices (Cartesia); the playback pitch only varies a little
 	"intercom": [1.0, 1.0, -3.0],
 	"commander": [1.0, 1.0, 2.0],          # slowed and deepened already at generation (Cartesia, speed 0.85)
 	"guard": [1.0, 1.0, -3.0],
@@ -33,6 +33,9 @@ func _ready() -> void:
 		if parsed is Dictionary:
 			_index = parsed
 	_player = AudioStreamPlayer.new()
+	Settings.load_settings()
+	Settings.apply_audio()
+	_player.bus = "Voice"          # the voices volume slider
 	add_child(_player)
 	_player.finished.connect(_next)
 	Game.radio_line.connect(_on_line)

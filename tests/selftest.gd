@@ -1966,7 +1966,7 @@ func squad_tests() -> void:
 	kill(crew4[0])
 	kill(crew4[1])
 	await secs(2.0)
-	check("holding soldiers talk over the radio when the player is within 25 m (subtitle)", radio.size() >= 1 and main.hud.radio_label.text.begins_with("[RADIO]"), str(radio))
+	check("holding soldiers talk over the radio when the player is within 25 m (subtitle)", radio.size() >= 1 and main.hud.subtitles.last_speaker == "radio", str(radio))
 	check("the radio crackle exists", Sfx.get_sound("radio").data.size() > 100)
 	Game.radio_line.disconnect(rcb)
 	sq.reset()

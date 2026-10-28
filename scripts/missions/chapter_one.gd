@@ -11,6 +11,7 @@ class_name ChapterOne
 ## and "X. The Commander" goes inside it (LanderInterior): sneak, the alarm, the run to the command deck, the Commander, the capture.
 
 
+## A line with "@" in front is Noah's own thought (the subtitle box shows it in grey italics, not as a radio call).
 static func _say(text: String) -> Callable:
 	return func(_m: Mission) -> void: Game.radio_line.emit(text)
 
@@ -74,7 +75,7 @@ static func build() -> Mission:
 		Mission.obj("leave_institute", "LEAVE THE INSTITUTE", {"pos": City.INSTITUTE_EXIT, "radius": 4.0,
 			"on_start": _say("CITY GUARD: THE VEIL HAS FAILED. ALL CITIZENS, GO HOME AND STAY INDOORS.")}),
 		Mission.obj("get_home", "GET HOME", {"pos": City.HOME_POS, "radius": 3.0,
-			"on_start": _say("KEEP MOVING. KEEP QUIET. DO NOT LET THEM SEE YOU.")}),
+			"on_start": _say("@KEEP MOVING. KEEP QUIET. DO NOT LET THEM SEE YOU.")}),
 		Mission.obj("go_cellar", "GO TO THE CELLAR", {"pos": City.CELLAR_POS, "marker_pos": City.HOME_POS, "radius": 2.5, "vertical": 2.0}),
 	]
 	var lk := CityStory.lookout
@@ -107,18 +108,18 @@ static func build() -> Mission:
 	])
 	m.objectives.append_array([
 		Mission.obj("climb_roof", "CLIMB TO THE ROOF", {"pos": roof, "marker_pos": lk["foot"], "radius": 3.5, "vertical": 2.5,
-			"on_start": _say("TOO MANY SOLDIERS IN THE STREETS. FIND A HIGH PLACE. LOOK.")}),
+			"on_start": _say("@TOO MANY SOLDIERS IN THE STREETS. FIND A HIGH PLACE. LOOK.")}),
 		Mission.obj("lookout", "LOOK OUT OVER THE CITY", {"type": "script", "pos": foot, "marker_pos": foot,
 			"on_start": func(mm: Mission) -> void:
 				_main().begin_lookout()
-				Game.radio_line.emit("THE SHIPS ARE SETTLING IN THE SQUARES. THE NEAREST ONE IS IN THE PARK.")}),
+				Game.radio_line.emit("@THE SHIPS ARE SETTLING IN THE SQUARES. THE NEAREST ONE IS IN THE PARK.")}),
 		Mission.obj("balcony_marksman", "KILL THE MARKSMAN - HE HAS SEEN YOU", {"type": "kill_group", "group": 201, "pos": CityStory.MARKSMAN_AT,
 			"on_start": func(_mm: Mission) -> void:
 				_main().alert_marksman()
-				Game.radio_line.emit("A MARKSMAN ON THE BALCONY. HE KNOWS WHERE YOU ARE. TAKE HIM OUT, NOW."),
+				Game.radio_line.emit("@A MARKSMAN ON THE BALCONY. HE KNOWS WHERE YOU ARE. TAKE HIM OUT, NOW."),
 			"on_complete": _grant_rifle}),
 		Mission.obj("park_fight", "THIN OUT THE GUARDS AT THE RAMP", {"type": "script", "pos": foot, "marker_pos": foot,
-			"on_start": _say("HIS LR-9 IS YOURS. LIE DOWN. LOOK THROUGH THE SCOPE. TEN GUARDS AT THE FOOT OF THE RAMP.")}),
+			"on_start": _say("@HIS LR-9 IS YOURS. LIE DOWN. LOOK THROUGH THE SCOPE. TEN GUARDS AT THE FOOT OF THE RAMP.")}),
 	])
 	var lane := CityStory.escape_lane()
 	if lane.is_empty():
@@ -131,25 +132,25 @@ static func build() -> Mission:
 		Mission.obj("escape_lanes", "ESCAPE INTO THE LANES", {"pos": lane["pos"], "radius": 4.0,
 			"on_start": func(_mm: Mission) -> void:
 				_main().chase.begin()
-				Game.radio_line.emit("THEY ARE COMING. RUN FOR THE LANES - YOU KNOW THESE STREETS.")}),
+				Game.radio_line.emit("@THEY ARE COMING. RUN FOR THE LANES - YOU KNOW THESE STREETS.")}),
 		Mission.obj("take_grenades", "TAKE THE STRAGGLERS' GRENADES", {"type": "script", "marker_pos": pipe,
-			"on_start": _say("TWO OF THEM ARE FALLING BEHIND. TAKE WHAT THEY CARRY.")}),
+			"on_start": _say("@TWO OF THEM ARE FALLING BEHIND. TAKE WHAT THEY CARRY.")}),
 		Mission.obj("clear_courtyard", "CLEAR THE COURTYARD", {"type": "script", "marker_pos": pipe,
 			"on_start": func(_mm: Mission) -> void:
 				_main().chase.gather()
-				Game.radio_line.emit("THEY HAVE GONE TO GROUND IN THE COURTYARD. THE DRAINPIPE. THE LOW ROOF.")}),
+				Game.radio_line.emit("@THEY HAVE GONE TO GROUND IN THE COURTYARD. THE DRAINPIPE. THE LOW ROOF.")}),
 		Mission.obj("finish_them", "FINISH THEM", {"type": "script", "marker_pos": CityStory.court_pos(),
 			"on_start": func(_mm: Mission) -> void:
 				_main().chase.on_finish_start()
-				Game.radio_line.emit("ONE GRENADE FOR WHAT IS LEFT. THROW IT WITH THE LEFT HAND.")}),
+				Game.radio_line.emit("@ONE GRENADE FOR WHAT IS LEFT. THROW IT WITH THE LEFT HAND.")}),
 		Mission.obj("ramp", "REACH THE OPEN RAMP", {"pos": ramp_top, "radius": 3.5, "vertical": 2.2,
-			"on_start": _say("THE RAMP IS OPEN. NOBODY IS LEFT TO GUARD IT."),
+			"on_start": _say("@THE RAMP IS OPEN. NOBODY IS LEFT TO GUARD IT."),
 			"on_complete": func(_mm: Mission) -> void: _main().ship.enter()}),
 	])
 	# "X. The Commander" (LanderInterior): inside the lander, sneak north past the patrols, the alarm, the run to the command deck, the Commander
 	m.objectives.append_array([
 		Mission.obj("ship_sneak", "FIND THE COMMANDER - STAY LOW, STAY QUIET", {"pos": LanderInterior.alarm_point(), "radius": 3.5, "vertical": 2.5,
-			"on_start": _say("THE SHIP IS FULL OF SOLDIERS. EVERY HOUSE, EVERY ROOM. SOMEONE GAVE THAT ORDER.")}),
+			"on_start": _say("@THE SHIP IS FULL OF SOLDIERS. EVERY HOUSE, EVERY ROOM. SOMEONE GAVE THAT ORDER.")}),
 		Mission.obj("ship_run", "THE ALARM - RUN FOR THE COMMAND DECK", {"pos": LanderInterior.deck_door(), "radius": 2.5, "vertical": 2.5,
 			"on_start": func(_mm: Mission) -> void:
 				_main().ship.begin_alarm()

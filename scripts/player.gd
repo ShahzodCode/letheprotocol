@@ -35,6 +35,7 @@ var hurt_k := 0.0             # 0..1 for the red flash
 const HEAL_AMOUNT := 25.0     # one med kit
 const HEAL_TIME := 3.0        # seconds the kit takes; health rises evenly meanwhile (moving, shooting and damage do not stop it)
 var heal_t := 0.0             # >0: seconds of healing left
+var death_cause := ""         # what the last hit was ("SHOT BY A RIFLEMAN"); the death screen shows it
 var _healed := 0.0            # health actually gained by the current kit (for the "+25 HEALTH" toast)
 var _look_delta := Vector2.ZERO
 var _sprinting := false
@@ -70,7 +71,7 @@ func _ready() -> void:
 	head.position.y = Game.STAND_HEIGHT - 0.12
 	add_child(head)
 	camera = Camera3D.new()
-	camera.fov = Game.BASE_FOV
+	camera.fov = Settings.fov
 	camera.near = 0.03
 	camera.far = 700.0
 	head.add_child(camera)
@@ -104,18 +105,28 @@ func add_recoil(pitch_deg: float, yaw_deg: float, recover: float) -> void:
 	recoil_recover = recover
 
 
+func _input(event: InputEvent) -> void:
+	if not Game.dead:
+		HoldInput.feed(event)
+		if event.is_action_pressed("sprint") and not event.is_echo():
+			HoldInput.release("aim")          # sprinting stops a toggled aim and a toggled crouch, as it does held ones
+			HoldInput.release("crouch")
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED and not Game.dead:
-		var scale := tan(deg_to_rad(camera.fov) * 0.5) / tan(deg_to_rad(Game.BASE_FOV) * 0.5)
+		var scale := tan(deg_to_rad(camera.fov) * 0.5) / tan(deg_to_rad(Settings.fov) * 0.5)
 		var rel: Vector2 = (event as InputEventMouseMotion).relative
 		yaw -= rel.x * Game.MOUSE_SENS * Settings.sens * scale
-		pitch = clampf(pitch - rel.y * Game.MOUSE_SENS * Settings.sens * scale, deg_to_rad(-89.0), deg_to_rad(89.0))
+		pitch = clampf(pitch - rel.y * (-1.0 if Settings.invert_y else 1.0) * Game.MOUSE_SENS * Settings.sens * scale, deg_to_rad(-89.0), deg_to_rad(89.0))
 		_look_delta += rel
 
 
-func take_damage(amount: float, from: Vector3 = Vector3.ZERO) -> void:
+## `cause` is what the death screen says if this hit kills ("SHOT BY A RIFLEMAN").
+func take_damage(amount: float, from: Vector3 = Vector3.ZERO, cause: String = "") -> void:
 	if Game.dead or Game.invulnerable or amount <= 0.0:
 		return
+	death_cause = cause
 	health = maxf(0.0, health - amount)
 	hurt_k = minf(1.0, hurt_k + 0.4 + amount / 40.0)
 	roll += randf_range(-0.05, 0.05)
@@ -123,8 +134,21 @@ func take_damage(amount: float, from: Vector3 = Vector3.ZERO) -> void:
 	damaged.emit(amount, from)
 	if health <= 0.0:
 		Game.dead = true
+		HoldInput.clear()
 		died.emit()
 		Game.player_died.emit()
+
+
+## A story failure that ends the run at once, whatever the health ("MIRA WAS FOUND"): the death screen shows the reason.
+func die(reason: String) -> void:
+	if Game.dead:
+		return
+	health = 0.0
+	death_cause = reason
+	Game.dead = true
+	HoldInput.clear()
+	died.emit()
+	Game.player_died.emit()
 
 
 ## A med kit is taken only when hurt and not already healing.
@@ -258,7 +282,7 @@ func _physics_process(delta: float) -> void:
 
 	# ---- crouch / slide ----
 	var hspeed := Vector2(velocity.x, velocity.z).length()
-	var crouch_held := Input.is_action_pressed("crouch")
+	var crouch_held := HoldInput.held("crouch")
 	if Input.is_action_just_pressed("crouch") and _sprinting and on_floor and hspeed > Game.WALK_SPEED + 0.5 and sliding <= 0.0:
 		sliding = 0.85
 		slide_dir = Vector3(velocity.x, 0, velocity.z).normalized()
@@ -278,7 +302,9 @@ func _physics_process(delta: float) -> void:
 	var eye_y := h - 0.12
 
 	# ---- target speed ----
-	_sprinting = Input.is_action_pressed("sprint") and input.y < -0.1 and crouch_k < 0.3 and on_floor and sliding <= 0.0 and not weapons.reloading and weapons.ads_k < 0.2
+	if input.y >= -0.1:
+		HoldInput.release("sprint")          # a toggled sprint ends when he stops running forward
+	_sprinting = HoldInput.held("sprint") and input.y < -0.1 and crouch_k < 0.3 and on_floor and sliding <= 0.0 and not weapons.reloading and weapons.ads_k < 0.2
 	var speed := Game.WALK_SPEED
 	if _sprinting:
 		speed = Game.SPRINT_SPEED
@@ -344,7 +370,7 @@ func _physics_process(delta: float) -> void:
 		var hurt_by_fall := 0.0
 		if fall_speed > Game.FALL_DAMAGE_SPEED:
 			hurt_by_fall = Player.fall_damage(fall_speed)
-			take_damage(hurt_by_fall)
+			take_damage(hurt_by_fall, Vector3.ZERO, "YOU FELL TO YOUR DEATH")
 			# a hard landing: a pain grunt, a stronger camera dip and a shake that grow with the damage
 			Sfx.play(self, "pain", -2.0 + minf(hurt_by_fall, 60.0) * 0.05)
 			add_shake(8.0 + clampf(1.0 - hurt_by_fall / 70.0, 0.0, 1.0) * 14.0)
@@ -383,7 +409,7 @@ func _update_camera(delta: float, on_floor: bool, eye_y: float) -> void:
 	shake = move_toward(shake, 0.0, delta * 1.2)
 	var sh := shake * shake * 0.06
 	head.rotation = Vector3(pitch + recoil_pitch + weapons.sway_view.x + randf_range(-sh, sh), recoil_yaw + weapons.sway_view.y + randf_range(-sh, sh), roll + slide_tilt + randf_range(-sh, sh) * 1.5)
-	camera.fov = lerpf(Game.BASE_FOV + (4.0 if _sprinting else 0.0), float(weapons.stats()["ads_fov"]), weapons.ads_k)
+	camera.fov = lerpf(Settings.fov + (4.0 if _sprinting else 0.0), float(weapons.stats()["ads_fov"]), weapons.ads_k)
 
 
 ## Damage from landing at `speed` m/s: nothing up to 15 m/s, then 5.5 per m/s (about 29 from 2 storeys, 75 from 4, 110 from 6).

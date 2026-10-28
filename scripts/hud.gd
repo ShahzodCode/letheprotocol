@@ -5,7 +5,6 @@ extends CanvasLayer
 
 const ACCENT := Color(0.2, 0.85, 0.8)
 const PLATE := Color(0.05, 0.07, 0.08, 0.72)
-const RED := Color(0.9, 0.25, 0.22)
 const GOLD := Color(0.95, 0.8, 0.35)
 
 var player: Player
@@ -23,6 +22,7 @@ var scope_rect: ColorRect
 var hint: Label
 var death_panel: Control
 var death_stats: Label
+var death_reason: Label        # what killed him ("SHOT BY A RIFLEMAN", "MIRA WAS FOUND")
 var objective_label: Label
 var toast_label: Label
 var interact_label: Label
@@ -35,8 +35,9 @@ var cross: _Cross
 var stealth: _Stealth
 var context_hint: _Context
 var grenade_badge: _Grenades
-var radio_label: Label
-var radio_t := 0.0
+var subtitles: Subtitles
+var compass: Compass
+var map_view: MapView
 var health_plate: Panel
 var ammo_plate: Panel
 var mags: _Mags
@@ -54,7 +55,8 @@ var hint_t := 14.0
 var _last_health := -1.0
 var _last_healing := false
 var heal_bar: ColorRect
-const HEAL_GREEN := Color(0.45, 0.95, 0.5)
+var _last_cb := false          # the colour-blind setting the fixed colours were last set for
+var death_title: Label
 var debug_overlay: PerfOverlay
 var gpu_warning: Label
 
@@ -74,14 +76,14 @@ class _Cross extends Control:
 		var len := 9.0
 		var w := 2.0
 		if show_dot:
-			draw_rect(Rect2(c.x - 1.5, c.y - 1.5, 3, 3), Color(1, 0.3, 0.25, 0.9))
+			draw_rect(Rect2(c.x - 1.5, c.y - 1.5, 3, 3), Settings.danger(0.9))
 		else:
 			draw_rect(Rect2(c.x - w * 0.5, c.y - gap - len, w, len), col)
 			draw_rect(Rect2(c.x - w * 0.5, c.y + gap, w, len), col)
 			draw_rect(Rect2(c.x - gap - len, c.y - w * 0.5, len, w), col)
 			draw_rect(Rect2(c.x + gap, c.y - w * 0.5, len, w), col)
 		if hit_t > 0.0:
-			var hc := Color(0.9, 0.2, 0.2, hit_t / 0.18) if hit_kill else (Color(1.0, 0.85, 0.3, hit_t / 0.18) if hit_head else Color(1, 1, 1, hit_t / 0.18))
+			var hc := Settings.danger(hit_t / 0.18) if hit_kill else (Color(1.0, 0.85, 0.3, hit_t / 0.18) if hit_head else Color(1, 1, 1, hit_t / 0.18))
 			var a := 7.0
 			var b := 15.0
 			for sx in [-1, 1]:
@@ -117,7 +119,7 @@ class _Stealth extends Control:
 		var eye_c := c + Vector2(0, -62)
 		var w := 14.0
 		var h := 7.0
-		var col := Color(1.0, 0.82, 0.2) if mode == 1 else Color(0.95, 0.2, 0.18)
+		var col := Color(1.0, 0.82, 0.2) if mode == 1 else Settings.danger()
 		draw_set_transform(eye_c)
 		draw_colored_polygon(_lens(w, h, -w, w), Color(0, 0, 0, 0.55))
 		if mode == 1:
@@ -156,10 +158,11 @@ class _Context extends Control:
 			for k in 5:
 				draw_line(o + Vector2(-8, -14.0 + 7.0 * k), o + Vector2(8, -14.0 + 7.0 * k), accent, 2.0)
 		var font := ThemeDB.fallback_font
-		var key := "CTRL" if kind == 2 else "W"
+		var key := Settings.key_name("crouch" if kind == 2 else "move_forward")
 		var label := "CROUCH" if kind == 2 else "CLIMB"
 		draw_string(font, Vector2(66.0, size.y * 0.5 + 6.0), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, accent)
-		draw_string(font, Vector2(66.0 + (46.0 if kind == 2 else 24.0), size.y * 0.5 + 6.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, ink)
+		var kw := font.get_string_size(key, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
+		draw_string(font, Vector2(66.0 + kw + 8.0, size.y * 0.5 + 6.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, ink)
 
 
 ## Frag grenade count next to the ammo box: a small grenade icon and "x N" (dim when empty).
@@ -176,7 +179,7 @@ class _Grenades extends Control:
 		draw_arc(Vector2(13, 14), 4.0, 0.0, TAU, 10, metal, 1.5)  # the pin ring
 		var font := ThemeDB.fallback_font
 		draw_string(font, Vector2(36, 36), "x %d" % count, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1, 1, 1, 0.95 if on else 0.4))
-		draw_string(font, Vector2(2, 56), "G", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 1, 1, 0.5))
+		draw_string(font, Vector2(2, 56), Settings.key_name("grenade"), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 1, 1, 0.5))
 
 
 ## The wounded right arm next to the health blocks: a bent arm with a bandage and a red pulse (shown after the story wound).
@@ -184,7 +187,7 @@ class _ArmIcon extends Control:
 	var t := 0.0
 
 	func _draw() -> void:
-		var hurt := Color(0.9, 0.2, 0.18, 0.9)
+		var hurt := Settings.danger(0.9)
 		var limb := Color(0.82, 0.84, 0.86, 0.95)
 		draw_line(Vector2(8, 6), Vector2(20, 18), limb, 6.0)          # upper arm
 		draw_line(Vector2(20, 18), Vector2(34, 10), limb, 5.0)        # forearm, bent at the elbow
@@ -220,7 +223,7 @@ class _Mags extends Control:
 			draw_rect(r, Color(1, 1, 1, 0.1))
 			var col := Color(0.2, 0.85, 0.8) if i == 0 else Color(0.95, 0.8, 0.35)
 			if i == 0 and frac <= 0.25:
-				col = Color(0.9, 0.25, 0.22)
+				col = Settings.danger()
 			elif i > 0 and frac < 1.0:
 				col = Color(0.75, 0.62, 0.3)
 			draw_rect(Rect2(x, bh * (1.0 - frac), bw, bh * frac), col)
@@ -372,10 +375,11 @@ void fragment() {
 	grenade_badge.size = Vector2(90, 62)
 	grenade_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(grenade_badge)
-	radio_label = _label(root, "", 18, Color(0.75, 0.95, 0.85))
-	radio_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	radio_label.size = Vector2(700, 28)
-	Game.radio_line.connect(_on_radio_line)
+	subtitles = Subtitles.new()
+	root.add_child(subtitles)
+	compass = Compass.new()
+	compass.size = Vector2(Compass.WIDTH, 34)
+	root.add_child(compass)
 
 	# kills plate (top left)
 	var kp := _plate(root, Vector2(16, 16), Vector2(150, 44))
@@ -397,7 +401,7 @@ void fragment() {
 	heal_bar = ColorRect.new()          # a med kit's progress under the blocks (Player.heal_t)
 	heal_bar.position = Vector2(12, 55)
 	heal_bar.size = Vector2(0, 3)
-	heal_bar.color = HEAL_GREEN
+	heal_bar.color = Settings.good()
 	heal_bar.visible = false
 	hp.add_child(heal_bar)
 	arm_icon = _ArmIcon.new()
@@ -460,21 +464,32 @@ void fragment() {
 	notice_label.size = Vector2(400, 28)
 
 	# controls hint
-	hint = _label(root, "WASD move   SHIFT sprint   CTRL crouch / slide   SPACE jump   LMB fire   RMB aim   R reload   ESC pause\n1 / 2 / 3 weapon slots (again = swap)   Q pick up   E interact   TAB / wheel cycle", 15, Color(1, 1, 1, 0.85))
+	var k := func(a: String) -> String: return Settings.key_name(a)
+	hint = _label(root, "%s%s%s%s move   %s sprint   %s crouch / slide   %s jump   %s fire   %s aim   %s reload   ESC pause\n%s / %s / %s weapon slots (again = swap)   %s pick up   %s interact   %s / wheel cycle   %s map" % [
+		k.call("move_forward"), k.call("move_left"), k.call("move_back"), k.call("move_right"), k.call("sprint"), k.call("crouch"), k.call("jump"),
+		k.call("fire"), k.call("aim"), k.call("reload"), k.call("slot_1"), k.call("slot_2"), k.call("slot_3"), k.call("pickup"), k.call("interact"),
+		k.call("cycle_weapon"), k.call("map")], 15, Color(1, 1, 1, 0.85))
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.size = Vector2(760, 44)
 
 	# death screen
 	death_panel = _overlay(root, Color(0.35, 0.0, 0.0, 0.55))
-	var dt := _label(death_panel, "YOU DIED", 64, RED)
+	var dt := _label(death_panel, "YOU DIED", 64, Settings.danger())
+	death_title = dt
+	_last_cb = Settings.colorblind
 	dt.set_anchors_preset(Control.PRESET_CENTER)
 	dt.position = Vector2(-200, -90)
 	dt.size = Vector2(400, 80)
 	dt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	death_reason = _label(death_panel, "", 26, Color(1.0, 0.88, 0.85))
+	death_reason.set_anchors_preset(Control.PRESET_CENTER)
+	death_reason.position = Vector2(-400, -22)
+	death_reason.size = Vector2(800, 36)
+	death_reason.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	death_stats = _label(death_panel, "", 20, Color.WHITE)
 	death_stats.set_anchors_preset(Control.PRESET_CENTER)
-	death_stats.position = Vector2(-250, -5)
+	death_stats.position = Vector2(-250, 25)
 	death_stats.size = Vector2(500, 80)
 	death_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	death_panel.visible = false
@@ -508,6 +523,9 @@ void fragment() {
 	pause_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	_build_pause_menu()
 	pause_panel.visible = false
+	map_view = MapView.new()
+	map_view.visible = false
+	root.add_child(map_view)
 
 	Game.player_died.connect(_on_died)
 	Game.goal_reached.connect(_on_goal)
@@ -582,7 +600,7 @@ func _update_stealth() -> void:
 			Enemy.State.SHOOT:
 				if d < 120.0:
 					alerted = true
-					arcs.append([screen_angle, Color(0.95, 0.2, 0.18, 0.8)])
+					arcs.append([screen_angle, Settings.danger(0.8)])
 			Enemy.State.ALERT, Enemy.State.CHASE, Enemy.State.ATTACK:
 				if d < 120.0:
 					alerted = true
@@ -590,17 +608,6 @@ func _update_stealth() -> void:
 	stealth.fill = near.notice_progress() if near != null else 0.0
 	stealth.arcs = arcs
 	stealth.queue_redraw()
-
-
-## Soldiers talking over the radio (subtitle at the bottom of the screen).
-func _on_radio_line(text: String) -> void:
-	if text.begins_with("@"):          # a spoken line that is not on the radio (the Commander): no prefix, held longer
-		radio_label.text = text.substr(1)
-		radio_t = clampf(2.0 + float(text.length()) * 0.04, 3.0, 6.0)
-	else:
-		radio_label.text = "[RADIO]  " + text
-		radio_t = 3.2
-	radio_label.modulate.a = 1.0
 
 
 func _on_objective_completed(_id: String, _text: String) -> void:
@@ -612,6 +619,7 @@ func _on_objective_completed(_id: String, _text: String) -> void:
 ## Called by Main after a checkpoint was restored: back to the game.
 func on_restored() -> void:
 	death_panel.visible = false
+	subtitles.clear()
 	toast_label.text = ""
 	toast_t = 0.0
 	_last_health = -1.0
@@ -625,7 +633,7 @@ func _on_goal() -> void:
 Shots: %d   Hits: %d   Accuracy: %d%%
 Health left: %d
 
-Press R to play again" % [
+R - play again      ESC - main menu" % [
 		Game.kills, Game.takedowns, Game.civilians_lost, Game.shots_fired, Game.shots_hit,
 		int(100.0 * Game.shots_hit / maxf(1.0, Game.shots_fired)), int(ceil(player.health))]
 	win_panel.visible = true
@@ -634,7 +642,10 @@ Press R to play again" % [
 
 
 func _on_died() -> void:
-	death_stats.text = "Kills: %d   Takedowns: %d   Civilians lost: %d\nShots: %d   Hits: %d   Accuracy: %d%%\n\nR - restart from checkpoint      SHIFT+R - restart the whole mission" % [
+	var cause := String(player.death_cause) if player != null and is_instance_valid(player) else ""
+	death_reason.text = cause if cause != "" else "YOU WERE KILLED"
+	death_stats.text = "Kills: %d   Takedowns: %d   Civilians lost: %d\nShots: %d   Hits: %d   Accuracy: %d%%\n\nR - restart from checkpoint      SHIFT+R - restart the whole mission
+ESC - main menu" % [
 		Game.kills, Game.takedowns, Game.civilians_lost, Game.shots_fired, Game.shots_hit,
 		int(100.0 * Game.shots_hit / maxf(1.0, Game.shots_fired))]
 	death_panel.visible = true
@@ -651,15 +662,32 @@ func _unhandled_input(event: InputEvent) -> void:
 			if Game.dead and not Game.won and not shift and Game.has_checkpoint:
 				Game.checkpoint_requested.emit()
 			else:
-				get_tree().paused = false
-				get_tree().reload_current_scene()
+				_reboot({"mode": "sandbox"} if Game.sandbox else {"mode": "new"})
+		elif event.is_action_pressed("pause"):
+			_reboot({})          # Esc: back to the main menu
+		return
+	if map_view.visible:
+		if event.is_action_pressed("pause") or event.is_action_pressed("map"):
+			toggle_map()
+			get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed("pause"):
 		_set_paused(not get_tree().paused)
 		get_viewport().set_input_as_handled()
-	elif false:
-		_set_paused(false)
+	elif event.is_action_pressed("map") and not get_tree().paused:
+		toggle_map()
 		get_viewport().set_input_as_handled()
+
+
+## M: the map and the objective log over a paused game.
+func toggle_map() -> void:
+	var on := not map_view.visible
+	if on:
+		map_view.open(player)
+	map_view.visible = on
+	get_tree().paused = on
+	Game.paused = on
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if on else Input.MOUSE_MODE_CAPTURED
 
 
 func _set_paused(p: bool) -> void:
@@ -682,8 +710,8 @@ func _layout() -> void:
 	pickup_plate.position = Vector2(vs.x - 316, vs.y * 0.5 - 75)
 	objective_label.position = Vector2(vs.x * 0.5 - 300, 14)
 	grenade_badge.position = Vector2(vs.x - 138 - 96, vs.y - 64 + 4)
-	radio_label.position = Vector2(vs.x * 0.5 - 350, vs.y - 112)
-	toast_label.position = Vector2(vs.x * 0.5 - 300, 48)
+	compass.position = Vector2(vs.x * 0.5 - Compass.WIDTH * 0.5, 44)
+	toast_label.position = Vector2(vs.x * 0.5 - 300, 84 if compass.visible else 48)
 	interact_label.position = Vector2(vs.x * 0.5 - 300, vs.y * 0.62)
 	context_hint.position = Vector2(vs.x * 0.5 - 95, vs.y * 0.62 + 34)
 	notice_label.position = Vector2(vs.x - 416, vs.y * 0.5 - 112)
@@ -696,6 +724,7 @@ func _update_pickup_box(w: Weapons) -> void:
 	if not pickup_plate.visible:
 		return
 	var d: Dictionary = WeaponsDB.WEAPONS[pk.weapon_id]
+	pickup_key.text = "[%s]  PICK UP" % Settings.key_name("pickup")
 	pickup_icon.id = pk.weapon_id
 	pickup_icon.queue_redraw()
 	pickup_name.text = String(d["name"])
@@ -726,7 +755,7 @@ func _process(delta: float) -> void:
 	mags.visible = false          # only the number of spare magazines is shown
 	if not melee:
 		ammo_big.text = str(w.ammo())
-		ammo_big.add_theme_color_override("font_color", RED if w.ammo() <= int(int(s["mag"]) * 0.25) else Color.WHITE)
+		ammo_big.add_theme_color_override("font_color", Settings.danger() if w.ammo() <= int(int(s["mag"]) * 0.25) else Color.WHITE)
 		ammo_small.text = "MAGS  %d" % w.spare_mags()
 		mags.loaded = w.ammo()
 		mags.cap = int(s["mag"])
@@ -746,13 +775,18 @@ func _process(delta: float) -> void:
 		reload_bg.visible = false
 
 	var healing := player.heal_t > 0.0
+	if Settings.colorblind != _last_cb:          # the colour-blind setting changed in the pause menu: recolour what is not redrawn every frame
+		_last_cb = Settings.colorblind
+		_last_health = -1.0
+		heal_bar.color = Settings.good()
+		death_title.add_theme_color_override("font_color", Settings.danger())
 	if player.health != _last_health or healing != _last_healing:
 		_last_health = player.health
 		_last_healing = healing
 		health_label.text = ("HEALING %d" if healing else "HEALTH %d") % int(ceil(player.health))
-		health_label.modulate = HEAL_GREEN if healing else Color.WHITE
+		health_label.modulate = Settings.good() if healing else Color.WHITE
 		var lit := int(ceil(player.health / 10.0))
-		var on := HEAL_GREEN if healing else (ACCENT if player.health > 30.0 else RED)
+		var on := Settings.good() if healing else (ACCENT if player.health > 30.0 else Settings.danger())
 		for i in 10:
 			health_blocks[i].color = on if i < lit else Color(1, 1, 1, 0.1)
 	heal_bar.visible = healing
@@ -763,16 +797,17 @@ func _process(delta: float) -> void:
 		arm_icon.visible = Game.arm_injured
 	grenade_badge.count = Game.grenades
 	grenade_badge.queue_redraw()
-	if radio_t > 0.0:
-		radio_t -= delta
-		radio_label.modulate.a = clampf(radio_t / 0.5, 0.0, 1.0)
-		if radio_t <= 0.0:
-			radio_label.text = ""
 	var ms := Game.mission
 	objective_label.text = ms.hud_text(player) if ms != null else ""
+	compass.visible = Settings.compass and not Game.dead and objective_label.text != ""
+	if compass.visible:
+		compass.yaw = player.yaw
+		compass.from = player.global_position
+		compass.target = ms.marker_pos()
+		compass.queue_redraw()
 	interact_label.text = ms.interact_prompt() if ms != null else ""
 	if w.takedown_target != null and not Game.dead:
-		interact_label.text = "E - TAKEDOWN"
+		interact_label.text = Settings.key_name("interact") + " - TAKEDOWN"
 	_update_stealth()
 	var ctx := player.context_hint()
 	if ctx != context_hint.kind:
@@ -815,21 +850,8 @@ func _process(delta: float) -> void:
 
 # ---------------------------------------------------------------- pause menu
 
-
-
-const GUIDE_MOVE := """WASD  walk (5 m/s).  Shift  sprint forward (8 m/s, loud, cancels aiming).
-Ctrl  crouch (slow and silent to soldiers, shorter: fits under low pipes and slabs).
-Shift, then Ctrl while sprinting  slide.
-Space  jump, hold for a higher jump. You can jump a moment after leaving a ledge.
-Small ledges (up to 0.55 m: kerbs, steps, stairs) are climbed automatically.
-Ladders: walk into one and press W. W / S climb, Space jumps off backwards, the top steps onto the roof. You cannot shoot on a ladder, but you can change weapon.
-Fall damage starts above about 2 storeys; 4 storeys nearly kills, 6 storeys does."""
-const GUIDE_STEALTH := """Crouched, nobody hears you. Stand behind a soldier with a knife and press E for a silent takedown."""
-const GUIDE_COMBAT := """LMB fire, RMB aim, R reload, 1 / 2 / 3 weapon slots, Tab or wheel cycle, Q pick up, hold G grenade.
-RELOADING: the rounds left in the gun are lost; you get a full magazine from your spares.
-The counter shows how many spare magazines you carry."""
-
 var _menu_widgets := {}
+var settings_tabs: SettingsMenu
 
 
 func _build_pause_menu() -> void:
@@ -860,58 +882,11 @@ func _build_pause_menu() -> void:
 	gpu_warning.custom_minimum_size = Vector2(900, 0)
 	gpu_warning.visible = false
 	outer.add_child(gpu_warning)
-	# tabs: each kind of setting lives in its own section, with a line under it saying what it does
-	var tabs := TabContainer.new()
-	tabs.custom_minimum_size = Vector2(900, 470)
-	tabs.add_theme_font_size_override("font_size", 18)
-	outer.add_child(tabs)
-	# --- GRAPHICS
-	var gfx := _menu_tab(tabs, "GRAPHICS")
-	_menu_option(gfx, "Quality preset", "preset", ["Custom", "Low", "Medium", "High"], 0, func(i: int) -> void:
-		if i > 0:
-			Settings.preset(i - 1)
-			_sync_menu()
-			_apply_settings())
-	_menu_note(gfx, "Sets shadows, anti-aliasing, render scale and view distance in one go. Change any of them below and it becomes Custom.")
-	_menu_option(gfx, "Shadows", "shadows", ["Off", "Low", "High"], Settings.shadows, func(i: int) -> void:
-		Settings.shadows = i
-		_apply_settings())
-	_menu_note(gfx, "Sun shadows. Low only shades the area right around you; the biggest saving after render scale.")
-	_menu_option(gfx, "Anti-aliasing", "aa", ["Off", "MSAA 2x", "MSAA 4x"], Settings.aa, func(i: int) -> void:
-		Settings.aa = i
-		_apply_settings())
-	_menu_note(gfx, "Smooths jagged edges of buildings and weapons. Costs speed on weaker cards.")
-	_menu_option(gfx, "View distance", "view", ["Short", "Medium", "Long"], Settings.view, func(i: int) -> void:
-		Settings.view = i
-		_apply_settings())
-	_menu_note(gfx, "How far you can see down the avenues before the haze takes the city.")
-	_menu_slider(gfx, "Render scale", "scale", 50.0, 100.0, 5.0, float(Settings.scale_pct), "%d%%", func(v: float) -> void:
-		Settings.scale_pct = int(v)
-		_apply_settings())
-	_menu_note(gfx, "Draws the 3D view at a lower resolution and stretches it. 100% is sharpest.")
-	_menu_check(gfx, "Fullscreen", "fullscreen", Settings.fullscreen, func(on: bool) -> void:
-		Settings.fullscreen = on
-		_apply_settings())
-	_menu_check(gfx, "VSync", "vsync", Settings.vsync, func(on: bool) -> void:
-		Settings.vsync = on
-		_apply_settings())
-	_menu_note(gfx, "VSync locks the frame rate to your screen and stops tearing; turn it off for the highest FPS.")
-	# --- GAME
-	var game := _menu_tab(tabs, "GAME")
-	_menu_slider(game, "Mouse sensitivity", "sens", 0.3, 2.5, 0.1, Settings.sens, "x%.1f", func(v: float) -> void:
-		Settings.sens = v
-		_apply_settings())
-	_menu_note(game, "Multiplies how far the view turns for each mouse movement.")
-	# --- CONTROLS (the guide, in its own sections)
-	var ctl := _menu_tab(tabs, "CONTROLS")
-	for part in [["MOVEMENT", GUIDE_MOVE], ["STEALTH", GUIDE_STEALTH], ["COMBAT", GUIDE_COMBAT]]:
-		ctl.add_child(_menu_label(String(part[0]), ACCENT, 18))
-		var g := _menu_label(String(part[1]), Color(0.85, 0.92, 0.92), 14)
-		g.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		g.custom_minimum_size = Vector2(850, 0)
-		ctl.add_child(g)
-	# --- CHEATS
-	var cheats := _menu_tab(tabs, "CHEATS")
+	# tabs: the settings shared with the main menu (SettingsMenu), then the cheats
+	settings_tabs = SettingsMenu.new()
+	settings_tabs.custom_minimum_size = Vector2(900, 430)
+	outer.add_child(settings_tabs)
+	var cheats := settings_tabs.page("CHEATS")
 	var give := Button.new()
 	give.text = "GIVE  SNIPER + HEAVY GUN  (full ammo)"
 	give.custom_minimum_size = Vector2(0, 38)
@@ -919,7 +894,7 @@ func _build_pause_menu() -> void:
 		player.weapons.give_heavy_set()
 		_set_paused(false))
 	cheats.add_child(give)
-	_menu_note(cheats, "Puts the LR-9 long rifle and the heavy gun in your rifle slots with all their ammunition.")
+	settings_tabs.note(cheats, "Puts the LR-9 long rifle and the heavy gun in your rifle slots with all their ammunition.")
 	var clear := Button.new()
 	clear.text = "KILL SOLDIERS WITHIN 50 m"
 	clear.custom_minimum_size = Vector2(0, 38)
@@ -927,39 +902,53 @@ func _build_pause_menu() -> void:
 		_clear_nearby()
 		_set_paused(false))
 	cheats.add_child(clear)
-	_menu_note(cheats, "Instantly kills every soldier within 50 metres of you.")
-	_menu_check(cheats, "Invisible to soldiers", "invisible", Game.invisible, func(on: bool) -> void:
+	settings_tabs.note(cheats, "Instantly kills every soldier within 50 metres of you.")
+	settings_tabs.check(cheats, "Invisible to soldiers", "invisible", Game.invisible, func(on: bool) -> void:
 		Game.invisible = on)
-	_menu_note(cheats, "No soldier can see or hear you, and soldiers already hunting you lose you. Walk anywhere freely; turn it off to be seen again.")
-	var resume := Button.new()
-	resume.text = "RESUME  (Esc)"
-	resume.custom_minimum_size = Vector2(0, 44)
-	resume.pressed.connect(func() -> void: _set_paused(false))
-	outer.add_child(resume)
+	_menu_widgets["invisible"] = settings_tabs.widgets["invisible"]
+	settings_tabs.note(cheats, "No soldier can see or hear you, and soldiers already hunting you lose you. Walk anywhere freely; turn it off to be seen again.")
+	var unlock := Button.new()
+	unlock.text = "UNLOCK ALL CHAPTERS"
+	unlock.custom_minimum_size = Vector2(0, 38)
+	unlock.pressed.connect(func() -> void:
+		SaveGame.unlock_all()
+		unlock.text = "ALL CHAPTERS UNLOCKED (main menu > chapter select)")
+	cheats.add_child(unlock)
+	settings_tabs.note(cheats, "Opens every place in CHAPTER SELECT with a standard kit, without playing up to it.")
+	# the buttons along the bottom
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	outer.add_child(row)
+	var btns := [
+		["RESUME  (Esc)", func() -> void: _set_paused(false)],
+		["MAP  (%s)" % Settings.key_name("map"), func() -> void:
+			_set_paused(false)
+			toggle_map()],
+		["LAST CHECKPOINT", func() -> void:
+			if Game.has_checkpoint:
+				_set_paused(false)
+				Game.checkpoint_requested.emit()],
+		["RESTART CHAPTER", func() -> void: _reboot({"mode": "place", "place": StoryPlaces.current_place()})],
+		["MAIN MENU", func() -> void: _reboot({})],
+		["QUIT GAME", func() -> void: get_tree().quit()],
+	]
+	for b in btns:
+		var bt := Button.new()
+		bt.text = String(b[0])
+		bt.custom_minimum_size = Vector2(0, 42)
+		bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bt.pressed.connect(b[1])
+		row.add_child(bt)
 
 
-## A tab page of the pause menu (a scrolling column) returned as the VBox to fill.
-func _menu_tab(tabs: TabContainer, title: String) -> VBoxContainer:
-	var scroll := ScrollContainer.new()
-	scroll.name = title
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
-	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(col)
-	tabs.add_child(scroll)
-	return col
+## Leave this run: back to the main menu (`boot` empty) or straight into a loading screen (new game / a place). Game.boot survives the reload.
+func _reboot(boot: Dictionary) -> void:
+	Game.boot = boot
+	get_tree().paused = false
+	Game.paused = false
+	get_tree().reload_current_scene()
 
 
-## A small grey line under a setting that says what it does.
-func _menu_note(parent: Control, text: String) -> void:
-	var l := _menu_label(text, Color(0.62, 0.7, 0.72), 13)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.custom_minimum_size = Vector2(840, 0)
-	parent.add_child(l)
-
-
-## One-time warning (once per adapter name, remembered in settings.cfg) when the game is not drawing on the NVIDIA card.
 func _show_gpu_warning() -> void:
 	if gpu_warning == null:
 		return
@@ -973,74 +962,11 @@ func _show_gpu_warning() -> void:
 
 
 func _menu_label(text: String, color: Color, size: int) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
-	return l
-
-
-func _menu_row(parent: Control, text: String) -> HBoxContainer:
-	var row := HBoxContainer.new()
-	var l := _menu_label(text, Color(0.9, 0.95, 0.95), 16)
-	l.custom_minimum_size = Vector2(160, 0)
-	row.add_child(l)
-	parent.add_child(row)
-	return row
-
-
-func _menu_option(parent: Control, text: String, key: String, items: Array, selected: int, on_pick: Callable) -> void:
-	var row := _menu_row(parent, text)
-	var ob := OptionButton.new()
-	for it in items:
-		ob.add_item(String(it))
-	ob.select(selected)
-	ob.custom_minimum_size = Vector2(190, 0)
-	ob.item_selected.connect(on_pick)
-	row.add_child(ob)
-	_menu_widgets[key] = ob
-
-
-func _menu_slider(parent: Control, text: String, key: String, lo: float, hi: float, step: float, value: float, fmt: String, on_change: Callable) -> void:
-	var row := _menu_row(parent, text)
-	var s := HSlider.new()
-	s.min_value = lo
-	s.max_value = hi
-	s.step = step
-	s.value = value
-	s.custom_minimum_size = Vector2(130, 24)
-	var val := _menu_label(fmt % value, Color(0.9, 0.95, 0.95), 16)
-	s.value_changed.connect(func(v: float) -> void:
-		val.text = fmt % v
-		on_change.call(v))
-	row.add_child(s)
-	row.add_child(val)
-	_menu_widgets[key] = s
-
-
-func _menu_check(parent: Control, text: String, key: String, on: bool, on_toggle: Callable) -> void:
-	var c := CheckBox.new()
-	c.text = text
-	c.button_pressed = on
-	c.toggled.connect(on_toggle)
-	parent.add_child(c)
-	_menu_widgets[key] = c
-
-
-func _sync_menu() -> void:
-	(_menu_widgets["shadows"] as OptionButton).select(Settings.shadows)
-	(_menu_widgets["aa"] as OptionButton).select(Settings.aa)
-	(_menu_widgets["view"] as OptionButton).select(Settings.view)
-	(_menu_widgets["scale"] as HSlider).value = float(Settings.scale_pct)
-
-
-func _apply_settings() -> void:
-	Settings.apply(get_tree(), get_tree().current_scene)
-	Settings.save()
+	return SettingsMenu.label(text, color, size)
 
 
 ## One clean, narrow sans for everything (the system's Bahnschrift, else Segoe UI); the engine's own font stays the last fallback.
-func _set_font() -> void:
+static func _set_font() -> void:
 	var f := SystemFont.new()
 	f.font_names = PackedStringArray(["Bahnschrift", "Segoe UI Semibold", "Segoe UI", "Helvetica Neue", "Arial"])
 	f.antialiasing = TextServer.FONT_ANTIALIASING_GRAY

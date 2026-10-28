@@ -59,6 +59,9 @@ var invisible := false     # cheat (pause menu): no soldier sees or hears the pl
 var sandbox := false       # `-- --sandbox`: the sandbox mission (enemies respawn)
 var mission: Mission = null
 var has_checkpoint := false   # Main has saved a checkpoint (the death screen offers R = restart from it)
+## What the next start of the main scene does (survives reload_current_scene; Main reads and clears it): {} = the main menu,
+## {"mode": "new"} = a new game, {"mode": "continue"} = the saved game, {"mode": "place", "place": id} = a chapter-select place, {"mode": "sandbox"}.
+var boot := {}
 
 signal player_died
 signal goal_reached
@@ -236,7 +239,9 @@ func _register_inputs() -> void:
 	_key("restart", KEY_R)
 	_key("pause", KEY_ESCAPE)
 	_key("debug_overlay", KEY_F3)
+	_key("map", KEY_M)
 	_mouse("fire", MOUSE_BUTTON_LEFT)
 	_mouse("aim", MOUSE_BUTTON_RIGHT)
 	_mouse("wheel_up", MOUSE_BUTTON_WHEEL_UP)
 	_mouse("wheel_down", MOUSE_BUTTON_WHEEL_DOWN)
+	Settings.apply_keys()          # the player's own bindings (settings.cfg [keys]) over the defaults

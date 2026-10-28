@@ -214,5 +214,5 @@ func burn(player: Player, delta: float) -> void:
 		var r: float = float(BURN_RADIUS[e["kind"]]) * clampf(float(e["s"]), 0.7, 1.5)
 		if Vector2(fp.x - pp.x, fp.z - pp.z).length() < r and pp.y > fp.y - 0.6 and pp.y < fp.y + 2.2:
 			_burn_t = BURN_TICK
-			player.take_damage(BURN_DPS * BURN_TICK, fp)
+			player.take_damage(BURN_DPS * BURN_TICK, fp, "BURNED TO DEATH")
 			return

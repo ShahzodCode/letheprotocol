@@ -26,6 +26,13 @@ var _coil_shown := 0.0
 var _cut := 0.0               # blade swing: driven through (torso turned into the blow, leaning in, arm forward) 0..1
 var _cut_shown := 0.0
 var _swing_side := 1.0        # which way the torso turns through the cut (alternates)
+# wounds (Enemy: leg / arm hits), kept for the rest of his life
+var _limp_side := 0.0         # +1 left leg hurt, -1 right, 0 none
+var _limp := 0.0              # 0..1 how bad
+var _stride := 0.0            # 0..1 through the current gait clip (set by the enemy every tick)
+var _stride_move := 0.0       # 0..1 how much he is moving (no hitch standing still)
+var _arm_side := 0.0          # +1 left arm hurt, -1 right, 0 none
+var _arm := 0.0
 
 
 ## A hit from skeleton-space direction `dir` (the way the bullet flies). `part` is the hit box part, `power` 0..1.
@@ -56,7 +63,7 @@ func swing(coil: float, cut: float, side: float) -> void:
 
 func is_idle() -> bool:
 	return _flinch < 0.002 and _flinch_shown < 0.002 and _recoil < 0.002 and _recoil_shown < 0.002 and _td < 0.002 and _td_shown < 0.002 \
-		and _coil < 0.002 and _coil_shown < 0.002 and _cut < 0.002 and _cut_shown < 0.002
+		and _coil < 0.002 and _coil_shown < 0.002 and _cut < 0.002 and _cut_shown < 0.002 and _limp <= 0.0 and _arm <= 0.0
 
 
 func flinch_amount() -> float:
@@ -87,8 +94,13 @@ func step(delta: float) -> void:
 
 func _process_modification() -> void:
 	var sk := get_skeleton()
-	if sk == null or (_flinch_shown <= 0.0 and _recoil_shown <= 0.0 and _td_shown <= 0.0 and _coil_shown <= 0.0 and _cut_shown <= 0.0):
+	if sk == null or (_flinch_shown <= 0.0 and _recoil_shown <= 0.0 and _td_shown <= 0.0 and _coil_shown <= 0.0 and _cut_shown <= 0.0 \
+			and _limp <= 0.0 and _arm <= 0.0):
 		return
+	if _limp > 0.0 and _td_shown <= 0.0:
+		_apply_limp(sk)
+	if _arm > 0.0 and _td_shown <= 0.0:
+		_apply_arm(sk)
 	if _td_shown > 0.0:
 		_apply_takedown(sk, _td_shown)
 	if _coil_shown > 0.0 or _cut_shown > 0.0:
@@ -174,6 +186,60 @@ func _apply_swing(sk: Skeleton3D, coil: float, cut: float) -> void:
 	_turn(sk, "LeftArm", Vector3.BACK, 0.25 * cut)          # the free arm swings out for balance
 	_turn(sk, "LeftUpLeg", Vector3.LEFT, 0.18 * cut)         # a step into the blow: front knee bends
 	_turn(sk, "LeftLeg", Vector3.LEFT, -0.22 * cut)
+
+
+# ---------------------------------------------------------------- wounds
+
+## A leg hit: `side` +1 left / -1 right, `amount` 0..1. He limps from now on.
+func wound_limp(side: float, amount: float) -> void:
+	_limp_side = side
+	_limp = clampf(amount, 0.0, 1.0)
+
+
+## An arm hit: `side` +1 left / -1 right, `amount` 0..1. He holds that arm from now on.
+func wound_arm(side: float, amount: float) -> void:
+	_arm_side = side
+	_arm = clampf(amount, 0.0, 1.0)
+
+
+## Where he is in his gait clip (0..1) and how much he moves (0..1): the limp hitches once per cycle.
+func set_stride(t: float, move: float) -> void:
+	_stride = t
+	_stride_move = clampf(move, 0.0, 1.0)
+
+
+## The limp: once a stride, as the weight comes onto the hurt leg, the torso lurches over it and the head dips; that knee stays
+## stiff and he leans toward it a little all the time. (Skeleton space: the model faces +z, his left is +x.)
+func _apply_limp(sk: Skeleton3D) -> void:
+	var s := _limp_side
+	var hitch := pow(maxf(0.0, sin(_stride * TAU)), 2.0) * _stride_move
+	var k := _limp
+	var fwd := Vector3.UP.cross(Vector3.BACK)               # tips the top toward +z, the way he faces
+	_turn(sk, "Hips", Vector3.BACK, -0.05 * s * k * hitch)
+	_turn(sk, "Spine", Vector3.BACK, -(0.04 + 0.14 * hitch) * s * k)
+	_turn(sk, "Spine1", Vector3.BACK, -0.08 * s * k * hitch)
+	_turn(sk, "Spine1", fwd, 0.1 * k * hitch)               # bobs forward over the bad step
+	_turn(sk, "Head", Vector3.BACK, 0.1 * s * k * hitch)     # the head stays level-ish
+	var leg := "LeftLeg" if s > 0.0 else "RightLeg"
+	var up := "LeftUpLeg" if s > 0.0 else "RightUpLeg"
+	_turn(sk, leg, Vector3.LEFT, 0.25 * k * _stride_move)   # the hurt knee does not bend much
+	_turn(sk, up, Vector3.LEFT, -0.12 * k * _stride_move)
+
+
+## The held arm: the hurt shoulder sags and the elbow is tucked in, the shoulders turn toward the wound and the arm wavers (the
+## gun with it).
+func _apply_arm(sk: Skeleton3D) -> void:
+	var s := _arm_side
+	var k := _arm
+	var t := Time.get_ticks_msec() * 0.001
+	var arm := "LeftArm" if s > 0.0 else "RightArm"
+	var fore := "LeftForeArm" if s > 0.0 else "RightForeArm"
+	_turn(sk, arm, Vector3.BACK, -0.22 * s * k)              # the shoulder drops
+	_turn(sk, arm, Vector3.LEFT, (sin(t * 3.1) * 0.05 + sin(t * 7.3) * 0.025) * k)
+	_turn(sk, arm, Vector3.UP, sin(t * 4.3) * 0.04 * k)
+	_turn(sk, fore, Vector3.LEFT, 0.25 * k)
+	_turn(sk, "Spine2", Vector3.UP, 0.1 * s * k)
+	_turn(sk, "Spine2", Vector3.BACK, -0.05 * s * k)         # hunched over it
 
 
 ## Rotate the bone of `role` by `angle` about `axis` (skeleton space), on top of its current pose.

@@ -58,16 +58,51 @@ var ship: LanderInterior         # the inside of the lander and the Commander (C
 var voice: Voice                 # the voiced lines (pre-rendered clips, see Voice)
 var home: HomeScene              # the mother, Mira and the soldiers in the apartment (Chapter One VI-VIII, see HomeScene)
 var _lookout_t := 0.0
+var menu: MainMenu                # the main menu / loading screen of a plain start (null once play begins, and in test runs)
+var _ffwd := false                # fast-forwarding to a chapter-select place: no checkpoints, no saves on the way
+var _say_again := false
 
 
+## A plain start shows the main menu (MainMenu), then a loading screen while the game is built. `--selftest`, `--script`, `--shots`
+## and `--sandbox` build straight away, without menu or loading screen. Game.boot (set by the menus before a reload) skips the menu.
 func _ready() -> void:
 	Game.reset_stats()
+	var args := OS.get_cmdline_user_args()
+	var tool_run := "--selftest" in args or "--shots" in args or "--script" in args
+	SaveGame.enabled = not tool_run and not ("--sandbox" in args)
+	if tool_run or "--sandbox" in args:
+		_build_game(null)
+		return
+	Settings.load_settings()
+	Settings.apply(get_tree(), self)
+	var boot := Game.boot
+	Game.boot = {}
+	menu = MainMenu.new()
+	add_child(menu)
+	if boot.is_empty():
+		boot = await menu.choose()
+	await menu.show_loading(boot)
+	await _build_game(menu)
+	await _start_from(boot)
+	await menu.finish_loading()
+	menu.queue_free()
+	menu = null
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	on_play_started()
+
+
+## Everything the game is made of. `loading` (the MainMenu, or null) gets a progress step between the parts, and a frame to draw it.
+func _build_game(loading: MainMenu) -> void:
 	_rng.randomize()
 	if OS.get_environment("LETHE_SEED") != "":        # perf runs: the same soldiers in the same places every launch
 		_rng.seed = int(OS.get_environment("LETHE_SEED"))
+	if loading != null:
+		await loading.step(0.05, "LAYING OUT THE CITY")
 	world = World.new()
 	add_child(world)
 	world.build()
+	if loading != null:
+		await loading.step(0.55, "PARKING THE CARS")
 	ParkedCars.build(self)
 
 	player = Player.new()
@@ -105,6 +140,8 @@ func _ready() -> void:
 	interiors = Interiors.new()
 	add_child(interiors)
 	interiors.setup(self)
+	if loading != null:
+		await loading.step(0.75, "SOLDIERS IN THE STREETS")
 	_spawn_city_enemies()
 	Game.enemy_killed.connect(_on_enemy_killed)
 	Game.objective_changed.connect(_on_objective_changed)
@@ -119,9 +156,16 @@ func _ready() -> void:
 	mission = Mission.sandbox() if Game.sandbox else Mission.story()
 	Game.mission = mission
 	if not Game.sandbox:
+		if loading != null:
+			await loading.step(0.88, "PEOPLE RUNNING")
 		_populate_civilians()     # before begin(): the first checkpoint includes them
 		_spawn_story_enemies()
+	if loading != null:
+		await loading.step(0.95, "THE STORY")
+		_ffwd = true              # a menu start: Main._start_from takes the first checkpoint once it is where it should be
 	mission.begin()           # saves the first checkpoint through objective_changed
+	if loading != null:
+		_ffwd = false
 	if "--selftest" in args or "--shots" in args or "--script" in args:
 		var path := "res://tests/selftest.gd" if "--selftest" in args else "res://tests/screenshots.gd"
 		if "--script" in args:          # `-- --script res://tests/mine.gd`: any script with run(main)
@@ -129,8 +173,132 @@ func _ready() -> void:
 		var t = load(path).new()
 		add_child(t)
 		t.run(self)
-	else:
+	elif loading == null:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+# ---------------------------------------------------------------- menu starts: new game, continue, a chapter-select place
+
+## After the build: bring the story to where `boot` asks for (a new game is already there), take the first checkpoint and save.
+func _start_from(boot: Dictionary) -> void:
+	var mode := String(boot.get("mode", "new"))
+	var entry := {}
+	var target := 0
+	var place := {}
+	if mode == "continue":
+		var d := SaveGame.data()
+		entry = d.get("last", {})
+		target = _objective_index(String(entry.get("objective_id", "")))
+		if target < 0 or d.get("ids", []) != mission.objectives.map(func(x): return String(x["id"])):
+			# the objective list changed since the save: start at the place the saved objective belonged to, with a standard kit
+			var pid := StoryPlaces.place_at(int(entry.get("index", 0))) if target >= 0 else String(StoryPlaces.PLACES[0]["id"])
+			entry = {}
+			place = StoryPlaces.get_place(pid)
+			target = maxi(_objective_index(pid), 0)
+	elif mode == "place":
+		place = StoryPlaces.get_place(String(boot.get("place", "")))
+		target = maxi(_objective_index(String(place.get("id", ""))), 0)
+		entry = SaveGame.place_entry(String(place.get("id", "")))
+	if target > 0:
+		await fast_forward(target)
+	if not entry.is_empty():
+		story_roles = (entry["roles"] as Dictionary).duplicate()
+		enemy_info = (entry["info"] as Dictionary).duplicate(true)
+		_next_uid = maxi(int(entry["next_uid"]), _next_uid)
+		checkpoint = Checkpoint.from_dict(entry["cp"])
+		checkpoint.objective = target
+		await _restore_checkpoint()
+	elif target > 0:
+		await _apply_kit(place)
+	voice.hush()
+	hud.subtitles.clear()
+	hud.on_restored()
+	checkpoint = Checkpoint.capture(self)
+	Game.has_checkpoint = true
+	SaveGame.record(self)
+	_say_again = target == 0          # the first objective's line was said behind the loading screen: MainMenu says it again when play starts
+
+
+## Play begins (the loading screen is gone): the opening line of a new game once more, now that someone can hear it.
+func on_play_started() -> void:
+	if _say_again and mission != null and String(mission.active().get("id", "")) == "leave_institute":
+		var cb: Callable = mission.active()["on_start"]
+		if cb.is_valid():
+			cb.call(mission)          # leave_institute's hook only says the city guard's line
+	_say_again = false
+
+
+## Run the story's objectives one after the other up to `target`, so every hook that sets up the world runs (the home scenes, the landing,
+## the chase, the lander), but drop the soldiers those skipped parts spawned (the place starts with its own fight only). No chimes, no
+## checkpoints on the way.
+func fast_forward(target: int) -> void:
+	_ffwd = true
+	Mission.silent = true
+	var uid0 := _next_uid
+	var target_id := String(mission.objectives[target]["id"])
+	var guards_wanted := target_id == "park_fight" or target_id == "escape_lanes"
+	while mission.index < target and not mission.finished:
+		var id := String(mission.active()["id"])
+		if id == "lookout":
+			world.lander.land_now()
+			if guards_wanted:
+				park_fight.spawn_guards()
+		if mission.index == target - 1:
+			_drop_skipped(uid0, target, guards_wanted)
+		mission._complete()
+	Mission.silent = false
+	_ffwd = false
+	_sync_story_world()
+	await get_tree().physics_frame
+
+
+func _drop_skipped(uid0: int, target: int, keep_guards: bool) -> void:
+	var past_home := target > _objective_index("get_home")
+	var past_marksman := _objective_index("balcony_marksman") >= 0 and target > _objective_index("balcony_marksman")
+	for e in Game.enemies.duplicate():
+		var en := e as Enemy
+		if not is_instance_valid(en):
+			continue
+		var role := String(story_roles.get(en.uid, ""))
+		var drop := false
+		if en.uid >= uid0:
+			drop = not (keep_guards and role == "park_guard")
+		elif role == "balcony_marksman":
+			drop = past_marksman
+		elif role == "lane_blade" or role == "lone_soldier":
+			drop = past_home
+		if drop:
+			story_roles.erase(en.uid)
+			Game.enemies.erase(en)
+			en.queue_free()
+
+
+## A standard-kit start (the "unlock all" cheat, or a save from an older objective list): the place's weapons, grenades and wound,
+## full health, and the player at the place's spot.
+func _apply_kit(place: Dictionary) -> void:
+	var kit: Dictionary = place.get("kit", {})
+	var w: Weapons = player.weapons
+	for slot in ["pistol", "rifle", "melee"]:
+		var arr: Array = []
+		for wid in kit.get(slot, []):
+			arr.append(Weapons.new_weapon(String(wid)))
+		w.loadout[slot] = arr
+	w.last_idx = {"pistol": 0, "rifle": 0, "melee": 0}
+	w.switching = 0.0          # a switch the skipped story started (the LR-9 handed over) must not land on an empty slot
+	w.pending_slot = ""
+	w.reloading = false
+	w._equip("pistol", 0)
+	w._show_only(w.current)
+	Game.grenades = int(kit.get("grenades", 0))
+	Game.arm_injured = bool(kit.get("arm", false))
+	player.health = Game.MAX_HEALTH
+	var at: Variant = StoryPlaces.spot(String(place.get("id", "")))
+	if at != null:
+		var p: Vector3 = (at as Vector3) + Vector3(0, 0.05, 0)
+		for i in 3:
+			player.global_position = p
+			player.velocity = Vector3.ZERO
+			await get_tree().physics_frame
 
 
 func _pick_weighted(w: Dictionary) -> String:
@@ -202,6 +370,7 @@ func spawn_enemy_from(info: Dictionary) -> Enemy:
 	e.ammo = int(info["ammo"])
 	e.sidearm_ammo = int(info["sidearm_ammo"])
 	add_child(e)
+	e.restore_wounds(info.get("wounds", {}))
 	e.home = info["home"]
 	e.facing = float(info["facing"])
 	enemy_info[e.uid] = {"kind": info["kind"], "group": e.group}
@@ -412,9 +581,11 @@ func _on_enemy_killed(e) -> void:
 ## A new objective starts: show the marker over it and save a checkpoint.
 func _on_objective_changed(_id: String) -> void:
 	world.set_marker_target(mission.marker_pos() if mission != null and not mission.finished else null)
-	if not _restoring and mission != null and not mission.finished:
+	if not _restoring and not _ffwd and mission != null and not mission.finished:
 		checkpoint = Checkpoint.capture(self)
 		Game.has_checkpoint = true
+		if not Game.sandbox:
+			SaveGame.record(self)
 
 
 func _restore_checkpoint() -> void:
@@ -446,6 +617,8 @@ func _update_sites(force: bool) -> void:
 
 
 func _process(delta: float) -> void:
+	if world == null or player == null or hud == null:          # the main menu: nothing is built yet
+		return
 	_site_t -= delta
 	_update_sites(false)
 	var t := Time.get_ticks_msec() * 0.001

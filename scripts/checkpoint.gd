@@ -28,6 +28,27 @@ var civilians_lost := 0
 var pickups: Array = []         # {is_ammo, weapon_id, ammo, spare, pos, t}
 
 
+## Every field above, for the save file (SaveGame writes it with var_to_str, so the Vector3s survive).
+const FIELDS := ["objective", "pos", "yaw", "pitch", "health", "loadout", "active_slot", "active_idx", "last_idx", "kills", "takedowns",
+	"grenades", "arm_injured", "shots_fired", "shots_hit", "enemies", "dead_uids", "civilians", "civ_bodies", "civilians_lost", "pickups"]
+
+
+func to_dict() -> Dictionary:
+	var d := {}
+	for f in FIELDS:
+		var v: Variant = get(f)
+		d[f] = v.duplicate(true) if v is Array or v is Dictionary else v
+	return d
+
+
+static func from_dict(d: Dictionary) -> Checkpoint:
+	var cp := Checkpoint.new()
+	for f in FIELDS:
+		if d.has(f):
+			cp.set(f, d[f])
+	return cp
+
+
 static func copy_loadout(src: Dictionary) -> Dictionary:
 	var out := {}
 	for slot in src:
@@ -64,7 +85,7 @@ static func capture(main) -> Checkpoint:
 			continue
 		alive[e.uid] = true
 		cp.enemies.append({"uid": e.uid, "kind": e.kind, "group": e.group, "pos": e.global_position, "home": e.home,
-			"health": e.health, "ammo": e.ammo, "sidearm_ammo": e.sidearm_ammo, "facing": e.facing})
+			"health": e.health, "ammo": e.ammo, "sidearm_ammo": e.sidearm_ammo, "facing": e.facing, "wounds": e.wound_state()})
 	for uid in main.enemy_info:
 		if not alive.has(uid):
 			cp.dead_uids.append(uid)
