@@ -66,7 +66,7 @@ const HIT_PARTS := [
 const GAITS := ["walk", "run", "crouch_walk", "run_shoot", "strafe_l", "strafe_r", "back", "back_aim", "look"]
 ## Clips that must start at once and are never held back by the anti-flicker hold.
 const URGENT := ["death", "melee", "reload", "hit", "hit2"]
-const HOLD_TICKS := 24            # a clip stays at least this many physics ticks (0.2 s at 120) before a non-urgent change
+const HOLD_TIME := 0.2            # a clip stays at least this long (counted in physics ticks) before a non-urgent change
 
 var model_id := ""
 var def: Dictionary
@@ -309,14 +309,14 @@ func blend_time(from: String, to: String) -> float:
 
 
 ## Plays a logical clip (no-op when already playing it). `speed` scales the playback. `blend` < 0: `blend_time`.
-## A change is held back until the current clip has played HOLD_TICKS (so aim / shoot / run do not flicker when the state
+## A change is held back until the current clip has played HOLD_TIME (so aim / shoot / run do not flicker when the state
 ## wobbles); a stride clip handed over to another stride clip carries its phase along.
 func play(logical: String, speed: float = 1.0, blend: float = -1.0) -> void:
 	if player == null or not has_anim(logical):
 		return
 	if current != logical:
 		var tick := Engine.get_physics_frames()
-		if current != "" and not URGENT.has(logical) and not URGENT.has(current) and tick - _started_tick < HOLD_TICKS:
+		if current != "" and not URGENT.has(logical) and not URGENT.has(current) and tick - _started_tick < int(HOLD_TIME * Engine.physics_ticks_per_second):
 			return
 		var phase := -1.0
 		if GAITS.has(current) and GAITS.has(logical) and player.current_animation != "":

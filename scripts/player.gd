@@ -48,6 +48,14 @@ var _mantle_t := 0.0          # >0: easing over the top of a ladder onto the roo
 var _mantle_from := Vector3.ZERO
 var _mantle_to := Vector3.ZERO
 var _climb_dist := 0.0       # metres climbed since the last rung sound
+# The view runs on the render frame (_process), not the physics tick: the head is top level, follows the body's interpolated
+# position and turns with the mouse every frame. The physics tick only leaves these for it.
+const TELEPORT_DIST := 2.0   # the interpolated body further than this from the real one: it was moved by a script, snap the view
+var _eye_y := Game.STAND_HEIGHT - 0.12
+var _cam_floor := true
+var _step_comp := 0.0        # height of this tick's step-up: the interpolated body is still below it, so the view adds the rest
+var _head_y := Game.STAND_HEIGHT - 0.12
+var _head_rot := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -67,9 +75,12 @@ func _ready() -> void:
 	col.position.y = Game.STAND_HEIGHT * 0.5
 	add_child(col)
 
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	head = Node3D.new()
-	head.position.y = Game.STAND_HEIGHT - 0.12
+	head.top_level = true
+	head.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF          # placed by hand every frame (camera and gun inherit it)
 	add_child(head)
+	head.global_position = global_position + Vector3(0, _head_y, 0)
 	camera = Camera3D.new()
 	camera.fov = Settings.fov
 	camera.near = 0.03
@@ -244,10 +255,9 @@ func _can_stand() -> bool:
 
 
 func _physics_process(delta: float) -> void:
-	# view
+	# view (the camera itself is placed in _process)
 	rotation.y = yaw
-	recoil_pitch = lerpf(recoil_pitch, 0.0, 1.0 - exp(-recoil_recover * delta))
-	recoil_yaw = lerpf(recoil_yaw, 0.0, 1.0 - exp(-recoil_recover * delta))
+	_step_comp = 0.0
 	_heal(delta)
 
 	if Game.dead:
@@ -359,6 +369,7 @@ func _physics_process(delta: float) -> void:
 			cam_before = _try_step(probe)
 	if cam_before > 0.0:
 		cam_dy -= cam_before
+		_step_comp = cam_before
 
 	move_and_slide()
 	if Game.arm_injured:
@@ -391,12 +402,33 @@ func _physics_process(delta: float) -> void:
 			step_dist = 0.0
 			Sfx.play(self, "step", -16.0 + (4.0 if _sprinting else 0.0) - (6.0 if crouch_k > 0.5 else 0.0), randf_range(0.85, 1.15))
 
-	_update_camera(delta, on_floor, eye_y)
+	_update_camera(on_floor, eye_y)
 
 
-## Eased camera offsets, bob, shake, recoil and FOV (also used while climbing).
-func _update_camera(delta: float, on_floor: bool, eye_y: float) -> void:
-	# ---- camera ----
+## The physics tick leaves the eye height and whether he stands on the floor (also used while climbing); _process does the rest.
+func _update_camera(on_floor: bool, eye_y: float) -> void:
+	_cam_floor = on_floor
+	_eye_y = eye_y
+
+
+## Every rendered frame: the view follows the body's interpolated position and the mouse's yaw / pitch at once,
+## with the eased offsets, bob, shake, recoil and FOV.
+func _process(delta: float) -> void:
+	var xf := get_global_transform_interpolated()
+	if xf.origin.distance_squared_to(global_position) > TELEPORT_DIST * TELEPORT_DIST:
+		reset_physics_interpolation()          # teleported (checkpoint, story): no sweep across the gap
+		xf = global_transform
+	if not Game.dead:
+		_ease_view(delta)
+	var lift := _step_comp * (1.0 - Engine.get_physics_interpolation_fraction()) if is_physics_interpolated_and_enabled() else 0.0
+	head.global_transform = Transform3D(Basis.from_euler(Vector3(_head_rot.x, yaw + _head_rot.y, _head_rot.z)), xf.origin + Vector3(0, _head_y + lift, 0))
+
+
+func _ease_view(delta: float) -> void:
+	recoil_pitch = lerpf(recoil_pitch, 0.0, 1.0 - exp(-recoil_recover * delta))
+	recoil_yaw = lerpf(recoil_yaw, 0.0, 1.0 - exp(-recoil_recover * delta))
+	var on_floor := _cam_floor
+	var eye_y := _eye_y
 	cam_dy = lerpf(cam_dy, 0.0, 1.0 - exp(-12.0 * delta))
 	land_dip = lerpf(land_dip, 0.0, 1.0 - exp(-9.0 * delta))
 	hurt_k = move_toward(hurt_k, 0.0, delta * 1.2)
@@ -405,10 +437,10 @@ func _update_camera(delta: float, on_floor: bool, eye_y: float) -> void:
 	if on_floor:
 		bob = sin(Time.get_ticks_msec() * 0.001 * Vector2(velocity.x, velocity.z).length() * 1.4) * 0.012 * clampf(Vector2(velocity.x, velocity.z).length() / Game.WALK_SPEED, 0.0, 1.5) * (1.0 - weapons.ads_k)
 	var slide_tilt := 0.08 if sliding > 0.0 else 0.0
-	head.position.y = eye_y + cam_dy - land_dip + bob
+	_head_y = eye_y + cam_dy - land_dip + bob
 	shake = move_toward(shake, 0.0, delta * 1.2)
 	var sh := shake * shake * 0.06
-	head.rotation = Vector3(pitch + recoil_pitch + weapons.sway_view.x + randf_range(-sh, sh), recoil_yaw + weapons.sway_view.y + randf_range(-sh, sh), roll + slide_tilt + randf_range(-sh, sh) * 1.5)
+	_head_rot = Vector3(pitch + recoil_pitch + weapons.sway_view.x + randf_range(-sh, sh), recoil_yaw + weapons.sway_view.y + randf_range(-sh, sh), roll + slide_tilt + randf_range(-sh, sh) * 1.5)
 	camera.fov = lerpf(Settings.fov + (4.0 if _sprinting else 0.0), float(weapons.stats()["ads_fov"]), weapons.ads_k)
 
 
@@ -510,7 +542,7 @@ func _climb(delta: float) -> void:
 		_detach()
 		return
 	global_position = Vector3(xz.x, clampf(y, base.y, top), xz.y)
-	_update_camera(delta, false, Game.STAND_HEIGHT - 0.12)
+	_update_camera(false, Game.STAND_HEIGHT - 0.12)
 
 
 ## What the HUD should hint at: 1 = a ladder to climb, 2 = a crouch passage ahead, 0 = nothing.
@@ -568,7 +600,7 @@ func _mantle(delta: float) -> void:
 	p.y += sin(k * PI) * 0.25
 	global_position = p
 	velocity = Vector3.ZERO
-	_update_camera(delta, false, Game.STAND_HEIGHT - 0.12)
+	_update_camera(false, Game.STAND_HEIGHT - 0.12)
 	if _mantle_t <= 0.0:
 		_detach()
 		Sfx.play(self, "land", -14.0)

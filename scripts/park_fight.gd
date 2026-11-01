@@ -79,8 +79,10 @@ func guards() -> Array:
 	return out
 
 
+## Dead guards (by any means: a shot, a grenade, fire), whatever the phase: after a restore with every guard already dead the controller is
+## IDLE, and THIN OUT THE GUARDS must still see them dead. No guards at all (none spawned) counts as all dead.
 func killed() -> int:
-	return CityStory.guard_spots().size() - guards().size() if phase != Phase.IDLE else 0
+	return maxi(0, mini(CityStory.guard_spots().size(), GUARD_KINDS.size()) - guards().size())
 
 
 func _on_gunshot(pos: Vector3, loudness: float) -> void:

@@ -43,6 +43,9 @@ const FINISH_DELAY := 0.6
 const CHASER_ROLES := ["chaser", "straggler"]
 const COURT_ROLES := ["courtyard", "courtyard_last"]
 const LAST_SCALE := 0.4               # the two "last men" (behind the crates) take 40% of a blast: one grenade rarely kills them, two do
+const STRAY_RANGE := 24.0            # a courtyard man this far from the courtyard (stuck on the way, or lost in the lanes) is a stray
+const STRAY_TIME := 30.0             # seconds a stray may stay away, out of the player's sight, before he is gone (the step never waits on him)
+const STRAY_TIME_ALONE := 8.0        # the same when nobody is left in the courtyard itself
 
 var main
 var phase := Phase.IDLE
@@ -52,6 +55,7 @@ var _t := 0.0
 var _bunch := {}                     # uid -> {wait, cd}
 var _split_cd := {}                  # uid -> seconds until he may be sent off again
 var _no_los := {}                    # uid -> seconds a wounded courtyard man has had no line to the player
+var _stray := {}                     # uid -> seconds a courtyard man has been a stray
 var _say_cd := 0.0
 var _finish_t := -1.0
 var _marker_at := Vector3.INF
@@ -126,6 +130,7 @@ func begin() -> void:
 	_bunch.clear()
 	_split_cd.clear()
 	_no_los.clear()
+	_stray.clear()
 	_say("THEY ARE COMING! AFTER HIM!")
 
 
@@ -149,6 +154,7 @@ func sync() -> void:
 	_bunch.clear()
 	_split_cd.clear()
 	_no_los.clear()
+	_stray.clear()
 	phase = Phase.IDLE
 	if Game.sandbox or main.mission == null:
 		return
@@ -194,6 +200,7 @@ func gather() -> void:
 	main.squads.form_back_to_back(mem, CityStory.court_pos())
 	phase = Phase.COURT
 	wound_ready = false
+	_stray.clear()
 	_say("FALL BACK! THE COURTYARD! BACK TO BACK!")
 
 
@@ -236,10 +243,48 @@ func _physics_process(delta: float) -> void:
 		Phase.CHASE:
 			_tick_chase(dt)
 		Phase.COURT:
+			_drop_strays(dt)
 			_tick_court()
 		Phase.FINISH:
+			_drop_strays(dt)
 			_tick_finish()
 	_marker()
+
+
+## TAKE THE STRAGGLERS' GRENADES: is there anything left to take (a straggler alive, or a grenade lying somewhere)?
+func grenades_to_take() -> bool:
+	if not stragglers().is_empty():
+		return true
+	for pk in Game.pickups:
+		if is_instance_valid(pk) and (pk as Pickup).is_grenade:
+			return true
+	return false
+
+
+## A courtyard man who never got there (stuck on the way, lost in the lanes) must not hold up CLEAR THE COURTYARD / FINISH THEM: after
+## STRAY_TIME away from it, out of the player's sight, he is gone (like the surplus guards in begin()).
+func _drop_strays(dt: float) -> void:
+	var alive := court()
+	var near := 0
+	for e in alive:
+		if _court_dist(e) <= STRAY_RANGE:
+			near += 1
+	for e2 in alive:
+		var en := e2 as Enemy
+		if _court_dist(en) <= STRAY_RANGE or en._los_to_player():
+			_stray.erase(en.uid)
+			continue
+		var t := float(_stray.get(en.uid, 0.0)) + dt
+		_stray[en.uid] = t
+		if t >= (STRAY_TIME if near > 0 else STRAY_TIME_ALONE):
+			_stray.erase(en.uid)
+			main.story_roles.erase(en.uid)
+			Game.enemies.erase(en)
+			en.queue_free()
+
+
+func _court_dist(e: Enemy) -> float:
+	return Vector2(e.global_position.x - City.COURT_POS.x, e.global_position.z - City.COURT_POS.z).length()
 
 
 func _tick_chase(dt: float) -> void:

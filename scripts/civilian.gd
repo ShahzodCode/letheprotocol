@@ -110,6 +110,7 @@ func setup(p: Player, pos: Vector3, seed_value: int, child: bool = false, adult:
 
 
 func _ready() -> void:
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON          # moved by the physics tick: drawn smoothly between ticks
 	collision_layer = Game.L_CIVILIAN
 	collision_mask = Game.L_WORLD
 	floor_max_angle = deg_to_rad(50.0)

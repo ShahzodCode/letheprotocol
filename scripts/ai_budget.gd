@@ -4,8 +4,8 @@ class_name AiBudget
 ## because the agents that were served reset their own timers, the refused ones get the next free slots (a natural round robin).
 ## Counters (`rays_total`, `rays_denied`, ...) are for the perf tools.
 
-const RAYS_PER_TICK := 12          # at 120 ticks/s: 1440 AI rays per second at most (the player's weapons are not counted)
-const PATHS_PER_TICK := 1          # A* requests per tick (agents keep following their old path while they wait)
+const RAYS_PER_TICK := 24          # at 60 ticks/s: 1440 AI rays per second at most (the player's weapons are not counted)
+const PATHS_PER_TICK := 2          # A* requests per tick (120 a second, as at the old 120 Hz) (agents keep following their old path while they wait)
 
 static var rays := 0
 static var paths := 0

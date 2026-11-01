@@ -66,6 +66,7 @@ var _say_again := false
 ## A plain start shows the main menu (MainMenu), then a loading screen while the game is built. `--selftest`, `--script`, `--shots`
 ## and `--sandbox` build straight away, without menu or loading screen. Game.boot (set by the menus before a reload) skips the menu.
 func _ready() -> void:
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF          # scenery, effects and UI move in _process or not at all; the bodies the physics tick moves (player, soldiers, civilians, grenades, casings) turn it on for themselves
 	Game.reset_stats()
 	var args := OS.get_cmdline_user_args()
 	var tool_run := "--selftest" in args or "--shots" in args or "--script" in args
@@ -479,10 +480,12 @@ func _apply_role(e: Enemy) -> void:
 ## he hunts, his own senses take over).
 func _update_story(delta: float) -> void:
 	_story_t -= delta
-	if _story_t > 0.0 or story_roles.is_empty():
+	if _story_t > 0.0:
 		return
 	_story_t = STORY_TICK
-	_update_lander_objectives()
+	_update_lander_objectives()          # also with no story soldier left: the objectives watch the world, not the roles
+	if story_roles.is_empty():
+		return
 	for e in Game.enemies:
 		var en := e as Enemy
 		if not is_instance_valid(en) or en.state != Enemy.State.WANDER or String(story_roles.get(en.uid, "")) != "lane_blade":
@@ -731,17 +734,20 @@ func _update_lander_objectives() -> void:
 			if not lk.is_empty():
 				var roof: Vector3 = lk["roof"]
 				var d := Vector2(player.global_position.x - roof.x, player.global_position.z - roof.z).length()
-				if d < LOOKOUT_RADIUS and absf(player.global_position.y - roof.y) < 3.0:
+				var on_roof := d < LOOKOUT_RADIUS and absf(player.global_position.y - roof.y) < 3.0
+				if on_roof:
 					_lookout_t += STORY_TICK
 				else:
 					_lookout_t = maxf(0.0, _lookout_t - STORY_TICK * 0.5)
-				if _lookout_t >= LOOKOUT_TIME and world.lander.landed:
+				# the craft is down: done after the look from the roof, or at once if he has already climbed down (the marker shows the ramp)
+				if world.lander.landed and (_lookout_t >= LOOKOUT_TIME or not on_roof):
 					Mission.complete("lookout")
 		"park_fight":
 			if park_fight.killed() >= ParkFight.KILLS_TO_CONTINUE:
 				Mission.complete("park_fight")
 		"take_grenades":
-			if Game.grenades >= ChaseFight.GRENADES_NEEDED:
+			# three in the pocket, or a full pocket, or nothing left to take (he threw them at the chasers and the stragglers are dead)
+			if Game.grenades >= mini(ChaseFight.GRENADES_NEEDED, Game.MAX_GRENADES) or not chase.grenades_to_take():
 				Mission.complete("take_grenades")
 
 

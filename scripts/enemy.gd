@@ -327,6 +327,7 @@ func setup(p: Player, home_pos: Vector3, kind_id: String = "soldier") -> void:
 
 func _ready() -> void:
 	_rng.randomize()
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON          # moved by the physics tick: drawn smoothly between ticks
 	collision_layer = Game.L_ENEMY
 	collision_mask = Game.L_WORLD | Game.L_ENEMY | Game.L_PLAYER
 	floor_max_angle = deg_to_rad(50.0)

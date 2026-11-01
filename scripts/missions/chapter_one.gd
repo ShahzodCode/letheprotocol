@@ -20,9 +20,34 @@ static func _main() -> Node:
 	return Game.player.get_tree().current_scene
 
 
+# Where the player is, for the objectives' done_if checks: a step whose place was reached another way is done all the same.
+static func _xz() -> Vector2:
+	return Vector2(Game.player.global_position.x, Game.player.global_position.z)
+
+
+static func _out_of_lobby() -> bool:
+	return not City.LOBBY.grow(1.0).has_point(_xz())
+
+
+static func _in_home() -> bool:
+	var y: float = Game.player.global_position.y
+	return City.HOME_RECT.has_point(_xz()) and y > -0.5 and y < 2.8 or _in_cellar()
+
+
+static func _in_cellar() -> bool:
+	return City.CELLAR_RECT.grow(0.3).has_point(_xz()) and Game.player.global_position.y < -1.5
+
+
+## Noah's neighbourhood (the block of the lanes and the courtyard), on the ground or on a roof.
+static func _in_lanes() -> bool:
+	return City.COURT_BLOCK.has_point(_xz())
+
+
 ## The marksman is dead: his LR-9 goes straight into the player's rifle slot (nobody has to walk down to the guards and up the balcony stair
 ## for it), and the one he dropped is removed.
-static func _grant_rifle(_m: Mission) -> void:
+static func _grant_rifle(m: Mission) -> void:
+	if m._group_alive(201):
+		return                # the player ran on to the lanes past him (balcony_marksman skipped): his rifle is still his
 	var w: Weapons = Game.player.weapons
 	for inst in w.loadout["rifle"]:
 		if String(inst["id"]) == "sniper":
@@ -72,11 +97,12 @@ static func build() -> Mission:
 	m.win_title = "TO BE CONTINUED"
 	m.respawn_enemies = false
 	m.objectives = [
-		Mission.obj("leave_institute", "LEAVE THE INSTITUTE", {"pos": City.INSTITUTE_EXIT, "radius": 4.0,
+		Mission.obj("leave_institute", "LEAVE THE INSTITUTE", {"pos": City.INSTITUTE_EXIT, "radius": 4.0, "done_if": _out_of_lobby,
 			"on_start": _say("CITY GUARD: THE VEIL HAS FAILED. ALL CITIZENS, GO HOME AND STAY INDOORS.")}),
-		Mission.obj("get_home", "GET HOME", {"pos": City.HOME_POS, "radius": 3.0,
+		Mission.obj("get_home", "GET HOME", {"pos": City.HOME_POS, "radius": 3.0, "done_if": _in_home,
 			"on_start": _say("@KEEP MOVING. KEEP QUIET. DO NOT LET THEM SEE YOU.")}),
-		Mission.obj("go_cellar", "GO TO THE CELLAR", {"pos": City.CELLAR_POS, "marker_pos": City.HOME_POS, "radius": 2.5, "vertical": 2.0}),
+		Mission.obj("go_cellar", "GO TO THE CELLAR", {"pos": City.CELLAR_POS, "marker_pos": City.HOME_POS, "radius": 2.5, "vertical": 2.0,
+			"done_if": _in_cellar}),
 	]
 	var lk := CityStory.lookout
 	if lk.is_empty():
@@ -86,6 +112,7 @@ static func build() -> Mission:
 	var foot := CityStory.ramp_foot()
 	# "VI. The Basement" to "VIII. The Locked Door" (HomeScene): the empty flat, the cellar, the raid, the mother, five more, the cabinet
 	m.objectives.insert(2, Mission.obj("search_home", "FIND MUM AND MIRA", {"type": "script", "marker_pos": HomeScene.KITCHEN_POS,
+		"done_if": _in_cellar,          # he went straight down the stairs: no knocking needed, he has found them
 		"on_start": func(_mm: Mission) -> void: _main().home.begin_search()}))
 	var cellar: Dictionary = m.objectives[3]
 	cellar["text"] = "GO DOWN TO THE CELLAR"
@@ -101,7 +128,7 @@ static func build() -> Mission:
 			"on_start": func(_mm: Mission) -> void: _main().home.begin_mother()}),
 		Mission.obj("five_more", "FIVE MORE - KEEP THEM AWAY FROM MIRA", {"type": "script",
 			"on_start": func(_mm: Mission) -> void: _main().home.begin_five()}),
-		Mission.obj("back_to_mira", "GO BACK TO MIRA", {"pos": City.CELLAR_POS, "radius": 2.5, "vertical": 2.0,
+		Mission.obj("back_to_mira", "GO BACK TO MIRA", {"pos": City.CELLAR_POS, "radius": 2.5, "vertical": 2.0, "done_if": _in_cellar,
 			"on_start": func(_mm: Mission) -> void: _main().home.begin_back()}),
 		Mission.obj("locked_door", "THE LOCKED DOOR", {"type": "script",
 			"on_start": func(_mm: Mission) -> void: _main().home.begin_locked()}),
@@ -114,11 +141,12 @@ static func build() -> Mission:
 				_main().begin_lookout()
 				Game.radio_line.emit("@THE SHIPS ARE SETTLING IN THE SQUARES. THE NEAREST ONE IS IN THE PARK.")}),
 		Mission.obj("balcony_marksman", "KILL THE MARKSMAN - HE HAS SEEN YOU", {"type": "kill_group", "group": 201, "pos": CityStory.MARKSMAN_AT,
+			"done_if": _in_lanes,          # he ran on to the lanes: the story follows him there
 			"on_start": func(_mm: Mission) -> void:
 				_main().alert_marksman()
 				Game.radio_line.emit("@A MARKSMAN ON THE BALCONY. HE KNOWS WHERE YOU ARE. TAKE HIM OUT, NOW."),
 			"on_complete": _grant_rifle}),
-		Mission.obj("park_fight", "THIN OUT THE GUARDS AT THE RAMP", {"type": "script", "pos": foot, "marker_pos": foot,
+		Mission.obj("park_fight", "THIN OUT THE GUARDS AT THE RAMP", {"type": "script", "pos": foot, "marker_pos": foot, "done_if": _in_lanes,
 			"on_start": _say("@HIS LR-9 IS YOURS. LIE DOWN. LOOK THROUGH THE SCOPE. TEN GUARDS AT THE FOOT OF THE RAMP.")}),
 	])
 	var lane := CityStory.escape_lane()
@@ -129,7 +157,7 @@ static func build() -> Mission:
 	var pipe := CityStory.pipe_foot()
 	var ramp_top := City.LANDER_POS + Basis(Vector3.UP, City.LANDER_YAW) * ShipModels.ramp_top_local()
 	m.objectives.append_array([
-		Mission.obj("escape_lanes", "ESCAPE INTO THE LANES", {"pos": lane["pos"], "radius": 4.0,
+		Mission.obj("escape_lanes", "ESCAPE INTO THE LANES", {"pos": lane["pos"], "radius": 4.0, "done_if": _in_lanes,
 			"on_start": func(_mm: Mission) -> void:
 				_main().chase.begin()
 				Game.radio_line.emit("@THEY ARE COMING. RUN FOR THE LANES - YOU KNOW THESE STREETS.")}),

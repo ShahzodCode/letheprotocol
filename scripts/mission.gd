@@ -7,7 +7,8 @@ extends RefCounted
 ## An objective is a Dictionary made with Mission.obj(): id, text (HUD), type (reach | kill_group | interact | script),
 ## pos (optional Vector3: distance + default marker spot), marker_pos (optional marker override), radius, vertical (max height
 ## difference for reach / interact, optional), group (kill_group), label (interact prompt), on_start / on_complete (Callables
-## that receive the Mission).
+## that receive the Mission), done_if (optional Callable -> bool, any type: checked every frame; true = the world already shows the step
+## done, e.g. the place was reached another way or the targets are already dead, so it completes without waiting for its usual trigger).
 
 const INTERACT_RANGE := 2.0
 const CHIME_VOLUME := -4.0
@@ -27,7 +28,7 @@ var in_interact_range := false     # HUD: show "E - label"
 
 static func obj(oid: String, text: String, opts: Dictionary = {}) -> Dictionary:
 	var o := {"id": oid, "text": text, "type": "reach", "pos": null, "marker_pos": null, "radius": 7.0, "vertical": -1.0,
-		"group": -1, "label": "", "on_start": Callable(), "on_complete": Callable()}
+		"group": -1, "label": "", "on_start": Callable(), "on_complete": Callable(), "done_if": Callable()}
 	for k in opts:
 		o[k] = opts[k]
 	return o
@@ -124,6 +125,10 @@ func update(player: Player, delta: float) -> void:
 		return
 	age += delta
 	in_interact_range = false
+	var done_if: Callable = o["done_if"]
+	if done_if.is_valid() and age > 0.1 and bool(done_if.call()):
+		_complete()
+		return
 	match String(o["type"]):
 		"reach":
 			if o["pos"] != null and _near(player, o["pos"], float(o["radius"]), float(o["vertical"])) and player.is_on_floor():

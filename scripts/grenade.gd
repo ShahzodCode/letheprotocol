@@ -45,6 +45,7 @@ func setup(pos: Vector3, velocity: Vector3) -> void:
 
 
 func _ready() -> void:
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON          # moved by the physics tick: drawn smoothly between ticks
 	var model := build_model()
 	add_child(model)
 	_lamp = MeshInstance3D.new()
