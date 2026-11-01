@@ -402,6 +402,9 @@ func _sphere(parent: Node3D, radius: float, squash: float, pos: Vector3, color: 
 
 ## What the death screen says when this kind of soldier's shot kills the player.
 const KILLED_BY := {"soldier": "SHOT BY A SOLDIER", "rifleman": "SHOT BY A RIFLEMAN", "marksman": "SHOT BY THE MARKSMAN", "gunner": "MOWN DOWN BY A HEAVY GUNNER"}
+const LEFT_WRIST := Vector3(-0.035, -0.035, 0.045)     # the left wrist sits this far from the gun's support point (gun space: left, below, behind)
+const GRIP_DIST := 45.0         # beyond this the left-hand / aim pose is not worked out (PoseLayer.grip)
+const GRIP_FREE := ["reload", "melee", "death", "die_run", "hit", "hit2", "idle_plain", "run_plain"]   # clips that use the left hand themselves
 const MODEL_OF := {"soldier": "soldier", "rifleman": "agile", "blade": "agile", "marksman": "marksman", "gunner": "marksman"}
 ## Dull rust-coloured armour on every kind (the multiplier of the model's own colours); the blade fighter keeps his violet plasma blade (the weapon glow).
 const RUST := Color(0.86, 0.46, 0.27)
@@ -439,6 +442,7 @@ func _build_model() -> void:
 		gun.position = Vector3(0.1, 1.15, -0.3)
 	else:
 		model.hold(gun)
+		_hold_gun()
 	if kind == "marksman":
 		laser = MeshInstance3D.new()
 		var lm := BoxMesh.new()
@@ -691,6 +695,7 @@ func _draw_sidearm(fumble: bool) -> void:
 	muzzle = Node3D.new()
 	muzzle.position = GunModels.muzzle("pistol")
 	gm.add_child(muzzle)
+	_hold_gun()
 
 
 ## Feeds the limp the stride: how far he is through his gait clip and how fast he moves.
@@ -762,6 +767,8 @@ func _die(impulse: Vector3, silent: bool = false) -> void:
 	var flat := Vector3(impulse.x, 0, impulse.z)
 	var back := flat.dot(fwd) < 0.0
 	gun.visible = false                  # the weapon drops as a pick-up
+	if model.layer != null:
+		model.layer.release()            # ...and the hands let go of it
 	if model.has_anim("death"):
 		# the old clips fall backwards: turn him so his head ends up along the shot; the new ones fall forward, the way he faces
 		var dclip := "death"
@@ -1979,6 +1986,8 @@ func _animate(delta: float, speed: float) -> void:
 		_animate_soldier(delta, speed, aiming)
 	else:
 		_animate_clips(delta, speed, aiming)
+		if model.layer != null:
+			_grip_pose(aiming)
 	var cross := model.player != null
 	# clip models answer a hit through the bones (PoseLayer); the soldier without clips tips his whole body
 	tilt.rotation.x = (0.16 if speed > RUN_ANIM_SPEED and cross else (0.24 if speed > RUN_ANIM_SPEED else 0.0)) - (flinch * 0.25 if model.layer == null else 0.0)
@@ -1993,6 +2002,27 @@ func _animate(delta: float, speed: float) -> void:
 	else:
 		tilt.position.z = 0.0
 	_sync_hitboxes()
+
+
+## Tells the pose layer how the weapon in his hand is held: where it hangs under the hand bone and where the left wrist goes on it.
+func _hold_gun() -> void:
+	if model.layer == null or gun.get_parent() != model.hand_node:
+		return
+	var wid := "pistol" if disarmed else weapon_id
+	var sup := GunModels.support(wid)
+	model.layer.hold_gun(gun.transform, Vector3.INF if (sup == Vector3.INF or kind == "blade") else sup - GunModels.grip(wid) + LEFT_WRIST)
+
+
+## Each tick (clip models): the left hand on the gun unless the clip needs it (reload, melee, a fall, catching his breath), the
+## barrel turned toward the aim point while he aims. Off beyond GRIP_DIST (nobody sees the hands there).
+func _grip_pose(aiming: bool) -> void:
+	var hold := 1.0
+	if kind == "blade" or not ranged or reloading or winded_t > 0.0 or state == State.EXHAUSTED or state == State.ATTACK \
+			or GRIP_FREE.has(model.current) or global_position.distance_squared_to(player.global_position) > GRIP_DIST * GRIP_DIST:
+		hold = 0.0
+	var aim := 1.0 if (aiming or charging) and hold > 0.0 else 0.0
+	var at := aim_point if aim_point != Vector3.ZERO and state == State.SHOOT else _chest()
+	model.layer.grip(hold, aim, at)
 
 
 ## The M4 soldier sits (clips off, posed from code, the rifle in `tilt` like before) or gets up (clips back, the rifle in his hand again).
@@ -2127,7 +2157,8 @@ func _animate_soldier(delta: float, speed: float, aiming: bool) -> void:
 	gun.rotation = gun.rotation.lerp(gr, kk)
 	_aim_pose = 1.0 if aiming else 0.0
 	var hand_r := m.skeleton.to_local(gun.global_position)
-	var hand_l := m.skeleton.to_local(gun.to_global(Vector3(0.0, -0.05, -0.3)))
+	var sup := GunModels.support("pistol" if disarmed else weapon_id)
+	var hand_l := m.skeleton.to_local(gun.to_global(Vector3(0.0, -0.05, -0.3) if sup == Vector3.INF else sup - GunModels.grip("pistol" if disarmed else weapon_id) + LEFT_WRIST))
 	m.ik_arm("R", hand_r, Vector3(-0.6, -1.0, -0.4))
 	m.ik_arm("L", hand_l, Vector3(0.6, -1.0, -0.4))
 

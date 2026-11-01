@@ -15,6 +15,8 @@ var camera: Camera3D
 var holder: Node3D
 var models := {}              # id -> Node3D viewmodel (children of holder)
 var muzzles := {}             # id -> Marker3D
+var parts := {}               # id -> {"mag": Node3D, "bolt": Node3D}: the viewmodel's moving parts (GunModels.build_viewmodel)
+var _part_rest := {}          # id -> {name: Vector3}: where each part sits at rest
 var state := {}               # {current id: the ACTIVE weapon instance {"id", "ammo": int, "spare": Array[int]}}
 var current := "pistol"       # id of the weapon in hand
 
@@ -89,6 +91,31 @@ var shell_end := Vector3.ZERO      # where the last traced shell ended (hit or m
 var _sway_t := 0.0
 
 var hum: AudioStreamPlayer          # the pulse rifle's charge hum while it is in hand
+
+# viewmodel motion (see _process): the recoil spring, the landing dip, the lag behind strafing, the bolt and the reload hand
+const VM_SPRING := 220.0           # stiffness of the viewmodel's recoil spring (1/s^2): it kicks back and settles with a small overshoot
+const VM_DAMP := 23.0              # ...and its damping
+const VM_KICK_MAX := 2.2           # the heaviest guns kick the viewmodel this many times a pistol-sized kick
+const LAND_SPRING := 130.0         # the landing dip: the gun drops on landing and bounces back
+const LAND_DAMP := 15.0
+const STRAFE_LAG := 0.004          # metres of sideways lag per m/s of strafing...
+const STRAFE_ROLL := 0.012         # ...and radians of roll
+const MAG_FALL_TIME := 0.3         # reload: the old magazine / cell falls free for this long...
+const MAG_RISE_TIME := 0.4         # ...and the new one is brought up into the well over this long, ending as it seats
+const RELOAD_HAND_LEAD := 0.18     # the hand reaches for the new magazine this long before it starts to rise
+const BOLT_LIFT := 1.15            # LR-9: radians the bolt handle turns up...
+const BOLT_TRAVEL := 0.075         # ...and metres it is drawn back
+var _vk_pos := Vector3.ZERO
+var _vk_pos_v := Vector3.ZERO
+var _vk_rot := Vector3.ZERO
+var _vk_rot_v := Vector3.ZERO
+var _land := 0.0
+var _land_v := 0.0
+var _was_floor := true
+var _fall_v := 0.0
+var _strafe := 0.0
+var bolt_t := -1.0                 # seconds since the last shot of a bolt-action gun (-1: the bolt is home)
+var reload_arm: Node3D             # the left sleeve and glove that brings the new magazine up
 var flash_light: OmniLight3D
 var flash_node: Node3D
 var flash_t := 0.0
@@ -145,6 +172,17 @@ func setup(p: Player, cam: Camera3D) -> void:
 	grab_arm.add_child(glove)
 	grab_arm.visible = false
 	camera.add_child(grab_arm)
+	# the reloading arm (left sleeve and glove): reaches up from below with the new magazine and seats it
+	reload_arm = Node3D.new()
+	var rsleeve := MeshInstance3D.new()
+	rsleeve.mesh = gsb
+	rsleeve.position = Vector3(0, 0, 0.2)
+	reload_arm.add_child(rsleeve)
+	var rglove := MeshInstance3D.new()
+	rglove.mesh = glb
+	reload_arm.add_child(rglove)
+	reload_arm.visible = false
+	camera.add_child(reload_arm)
 	# the wounded right arm: a limp sleeve hanging at the bottom right edge of the view, dark with blood
 	wound_arm_node = Node3D.new()
 	var sl := MeshInstance3D.new()
@@ -262,14 +300,23 @@ func _build_model(id: String, w: Dictionary) -> Node3D:
 	if ResourceLoader.exists(String(w["model"])):
 		scene = load(String(w["model"])) as PackedScene
 	if scene == null:
-		# no imported model: the procedural one (detailed version), placed so its top sits at top_y and it is centred on center_z
-		var gm := GunModels.build(id, 2)
+		# no imported model: the procedural one (detailed version, moving parts apart), placed so its top sits at top_y and it is
+		# centred on center_z
+		var gm := GunModels.build_viewmodel(id)
 		if bool(w.get("melee", false)):
 			gm.position = Vector3(0, float(w["top_y"]) - 0.02, -0.01)
 			gm.rotation.x = 0.35                  # tip up, the way a blade is held
 		else:
 			gm.position = Vector3(0, float(w["top_y"]), float(w["center_z"]))
 		root.add_child(gm)
+		var found := {}
+		var rest := {}
+		for c in gm.get_children():
+			if String(c.name) != "body":
+				found[String(c.name)] = c
+				rest[String(c.name)] = (c as Node3D).position
+		parts[id] = found
+		_part_rest[id] = rest
 		return root
 	var model := scene.instantiate() as Node3D
 	root.add_child(model)
@@ -1186,8 +1233,14 @@ func _fire_shot() -> void:
 	# recoil: the view itself climbs and has to be pulled back down; ADS tames it
 	var tame := lerpf(1.0, 0.7, ads_k)
 	player.add_recoil(float(s["recoil_pitch"]) * tame * _rng.randf_range(0.85, 1.15), _rng.randf_range(-1.0, 1.0) * float(s["recoil_yaw"]) * tame, float(s["recoil_recover"]))
-	kick = minf(kick + 0.035 * (1.0 - ads_k * 0.5), 0.08)
-	kick_pitch = minf(kick_pitch + 0.07 * (1.0 - ads_k * 0.4), 0.2)
+	kick = minf(kick + 0.02 * (1.0 - ads_k * 0.5), 0.06)
+	kick_pitch = minf(kick_pitch + 0.04 * (1.0 - ads_k * 0.4), 0.14)
+	# the viewmodel's own kick: a shove back and up with a random twist, on a spring (bigger for the heavy-recoil guns)
+	var vk := clampf(float(s["recoil_pitch"]) / 1.5, 0.5, VM_KICK_MAX) * (1.0 - ads_k * 0.45)
+	_vk_pos_v += Vector3(_rng.randf_range(-0.12, 0.12), 0.16, 0.85) * vk
+	_vk_rot_v += Vector3(2.2, _rng.randf_range(-0.6, 0.6), _rng.randf_range(-1.0, 1.0)) * vk
+	if bool(s.get("bolt", false)):
+		bolt_t = 0.0
 
 	if int(st["ammo"]) <= 0 and reserve() > 0:
 		# empty: ready to reload on the next trigger pull (the click will start it)
@@ -1365,10 +1418,15 @@ func _process(delta: float) -> void:
 	var ads_pos := _ads_pos(s)
 	var pos := HIP_POS.lerp(ads_pos, ads_k) + bob + Vector3(sway.x, sway.y, 0.0) + Vector3(0, 0, kick)
 	var rot := Vector3(kick_pitch, 0, 0)
+	var motion := _motion_offsets(delta, s)
+	pos += motion[0]
+	rot += motion[1]
 
 	if player.is_sprinting():
-		pos += Vector3(0.05, -0.06, 0.02)
-		rot += Vector3(0.0, 0.45, 0.15)
+		# carried across the chest; the heavy guns lower and tilt more, and swing with the stride
+		var heavy := clampf((1.0 - float(s.get("carry", 1.0))) / 0.3, 0.0, 1.0)
+		pos += Vector3(0.05, -0.06 - 0.03 * heavy, 0.02)
+		rot += Vector3(-0.12 * heavy + absf(cos(bob_t)) * 0.03, 0.45 + 0.2 * heavy, 0.15 + 0.15 * heavy + sin(bob_t) * 0.04)
 
 	if reloading:
 		var k := clampf(reload_t / reload_total(), 0.0, 1.0)
@@ -1381,6 +1439,16 @@ func _process(delta: float) -> void:
 				var jolt := sin(PI * since / RELOAD_BEAT_TIME)
 				pos.y -= RELOAD_BEAT_DROP * jolt
 				rot.x -= RELOAD_BEAT_DROP * 3.0 * jolt
+		if parts.has(current) and (parts[current] as Dictionary).has("mag") and (stats().get("reload_beats", []) as Array).is_empty():
+			var seat: float = reload_t - _mag_times(stats()).y         # no recording: the gun still jolts as the new magazine seats
+			if seat > 0.0 and seat < RELOAD_BEAT_TIME:
+				var jolt2 := sin(PI * seat / RELOAD_BEAT_TIME)
+				pos.y += RELOAD_BEAT_DROP * jolt2
+				rot.x += RELOAD_BEAT_DROP * 2.0 * jolt2
+	if bolt_t >= 0.0 or (reloading and parts.has(current) and (parts[current] as Dictionary).has("bolt")):
+		var bp := _bolt_pose()             # working the bolt: the gun cants toward the hand and dips a little
+		pos += Vector3(-0.01 * bp.x, -0.012 * bp.x - 0.006 * bp.y, 0.01 * bp.y)
+		rot += Vector3(-0.04 * bp.x, 0.0, 0.14 * bp.x)
 	var snap := false              # the fast part of a stroke: the viewmodel follows its pose without smoothing
 	if is_melee() and melee_t <= 0.0 and takedown_t <= 0.0:
 		# at rest the blade breathes a little in the hand
@@ -1452,6 +1520,148 @@ func _process(delta: float) -> void:
 	holder.visible = not is_scoped()
 	holder.position = holder.position.lerp(pos, 1.0 - exp(-(140.0 if snap else 30.0) * delta))
 	holder.rotation = holder.rotation.lerp(rot, 1.0 - exp(-(140.0 if snap else 24.0) * delta))
+	if bolt_t >= 0.0:
+		bolt_t += delta
+		if bolt_t > 1.1 or not bool(s.get("bolt", false)):
+			bolt_t = -1.0
+	_animate_parts()
+	_update_reload_arm()
+
+
+## The viewmodel's motion offsets [pos, rot] on top of the hip / aim pose: the recoil spring, the dip on landing and the lift in a
+## jump, the lag and roll behind strafing, a slow breath, the crouch tuck and the dip while the sights come up.
+func _motion_offsets(delta: float, s: Dictionary) -> Array:
+	var dt := minf(delta, 0.05)
+	_vk_pos_v += (-VM_SPRING * _vk_pos - VM_DAMP * _vk_pos_v) * dt
+	_vk_pos += _vk_pos_v * dt
+	_vk_rot_v += (-VM_SPRING * _vk_rot - VM_DAMP * _vk_rot_v) * dt
+	_vk_rot += _vk_rot_v * dt
+	var on_floor := player.is_on_floor()
+	if on_floor and not _was_floor:
+		_land_v -= clampf(_fall_v / 12.0, 0.1, 1.2) * 0.9          # harder landings drop the gun further
+	if not on_floor:
+		_fall_v = maxf(0.0, -player.velocity.y)
+	_was_floor = on_floor
+	_land_v += (-LAND_SPRING * _land - LAND_DAMP * _land_v) * dt
+	_land += _land_v * dt
+	var side_v := player.velocity.dot(camera.global_transform.basis.x)
+	_strafe = lerpf(_strafe, side_v, 1.0 - exp(-6.0 * delta))
+	var free := 1.0 - ads_k * 0.8
+	var pos := Vector3(_vk_pos.x, _vk_pos.y, _vk_pos.z) + Vector3(-_strafe * STRAFE_LAG * free, _land, 0.0)
+	var rot := _vk_rot + Vector3(_land * 1.5, 0.0, -_strafe * STRAFE_ROLL * free)
+	if not on_floor and not player.climbing:
+		pos.y -= clampf(player.velocity.y * 0.0025, -0.015, 0.015)            # going up the gun lags down, falling it floats up
+	if not is_melee():
+		var tt := Time.get_ticks_msec() * 0.001
+		var br := 1.0 - ads_k * 0.9
+		pos += Vector3(0.0015 * sin(tt * 0.8), 0.0025 * sin(tt * 1.6), 0.0) * br
+		rot += Vector3(0.008 * sin(tt * 1.6 + 0.4), 0.005 * sin(tt * 0.8), 0.0) * br
+	pos += Vector3(-0.015, -0.012, 0.01) * player.crouch_k * free
+	rot.z += 0.08 * player.crouch_k * free
+	var raise := sin(PI * ads_k)
+	pos.y -= 0.008 * raise
+	rot.z += 0.04 * raise
+	if s.has("carry") and float(s["carry"]) < 0.8:
+		rot *= 0.85                    # the heaviest guns move less
+	return [pos, rot]
+
+
+## When the old magazine comes out and the new one seats (seconds into the reload): the recorded reload's beats if the DB names
+## them (`mag_beats`: indices into `reload_beats`), otherwise fixed shares of the reload.
+func _mag_times(s: Dictionary) -> Vector2:
+	var total := reload_total()
+	var mb: Array = s.get("mag_beats", [])
+	var beats: Array = s.get("reload_beats", [])
+	if mb.size() == 2 and beats.size() > maxi(int(mb[0]), int(mb[1])) and String(s.get("reload_sound", "")) != "":
+		var c0 := _reload_clip_start()
+		return Vector2(c0 + float(beats[int(mb[0])]), c0 + float(beats[int(mb[1])]))
+	return Vector2(total * 0.22, total * 0.68)
+
+
+## The LR-9's bolt (lift 0..1, drawn back 0..1): after a shot it is worked once (lift, back, forward, down); in a reload it is
+## opened and drawn back at the first `bolt_beats` and closed at the last.
+func _bolt_pose() -> Vector2:
+	var s := stats()
+	if reloading:
+		var bb: Array = s.get("bolt_beats", [])
+		var beats: Array = s.get("reload_beats", [])
+		if bb.size() == 3 and beats.size() > int(bb[2]):
+			var rt := reload_t - _reload_clip_start()
+			var b0 := float(beats[int(bb[0])])
+			var b1 := float(beats[int(bb[1])])
+			var b2 := float(beats[int(bb[2])])
+			var lift := smoothstep(b0 - 0.05, b0 + 0.12, rt) * (1.0 - smoothstep(b2 - 0.08, b2 + 0.04, rt))
+			var back := smoothstep(b1 - 0.12, b1 + 0.04, rt) * (1.0 - smoothstep(b2 - 0.3, b2 - 0.1, rt))
+			return Vector2(lift, back)
+		var k := reload_t / maxf(0.1, reload_total())
+		return Vector2(smoothstep(0.02, 0.1, k) * (1.0 - smoothstep(0.88, 0.97, k)), smoothstep(0.08, 0.16, k) * (1.0 - smoothstep(0.78, 0.88, k)))
+	if bolt_t < 0.0:
+		return Vector2.ZERO
+	var t := bolt_t
+	return Vector2(smoothstep(0.33, 0.45, t) * (1.0 - smoothstep(0.84, 0.96, t)), smoothstep(0.46, 0.6, t) * (1.0 - smoothstep(0.68, 0.82, t)))
+
+
+## Moves the moving parts of the gun in hand: the magazine drops out and the new one rises into the well during a reload, the bolt
+## is worked. At rest every part sits in its place.
+func _animate_parts() -> void:
+	if not parts.has(current):
+		return
+	var pn: Dictionary = parts[current]
+	var rest: Dictionary = _part_rest[current]
+	if pn.has("mag"):
+		var mag: Node3D = pn["mag"]
+		var off := Vector3.ZERO
+		var tilt_x := 0.0
+		var shown := true
+		if reloading:
+			var mt := _mag_times(stats())
+			var rise_at := mt.y - MAG_RISE_TIME
+			if reload_t >= mt.x and reload_t < rise_at:
+				var fk := clampf((reload_t - mt.x) / MAG_FALL_TIME, 0.0, 1.0)     # falls free, faster and faster, tipping forward
+				off = Vector3(0.0, -0.34 * fk * fk, 0.03 * fk)
+				tilt_x = 0.55 * fk
+				shown = fk < 0.97
+			elif reload_t >= rise_at and reload_t < mt.y:
+				var e := 1.0 - pow(1.0 - clampf((reload_t - rise_at) / MAG_RISE_TIME, 0.0, 1.0), 3.0)
+				off = Vector3(0.0, -0.2 * (1.0 - e), 0.04 * (1.0 - e))
+				tilt_x = -0.35 * (1.0 - e)
+		var mag_rest: Vector3 = rest["mag"]
+		mag.position = mag_rest + off
+		mag.rotation = Vector3(tilt_x, 0.0, 0.0)
+		mag.visible = shown
+	if pn.has("bolt"):
+		var bolt: Node3D = pn["bolt"]
+		var bp := _bolt_pose()
+		var bolt_rest: Vector3 = rest["bolt"]
+		bolt.position = bolt_rest + Vector3(0.0, 0.0, BOLT_TRAVEL * bp.y)
+		bolt.rotation = Vector3(0.0, 0.0, BOLT_LIFT * bp.x)
+
+
+## The left hand during a reload: it reaches up from below the view, brings the new magazine into the well, slaps it home and
+## drops away again. It follows the magazine itself, so it stays on it however the gun moves.
+func _update_reload_arm() -> void:
+	if reload_arm == null:
+		return
+	reload_arm.visible = false
+	if not reloading or Game.arm_injured or is_scoped() or not parts.has(current) or not (parts[current] as Dictionary).has("mag"):
+		return
+	var mt := _mag_times(stats())
+	var reach_at := mt.y - MAG_RISE_TIME - RELOAD_HAND_LEAD
+	var gone_at := mt.y + 0.2
+	if reload_t < reach_at or reload_t > gone_at:
+		return
+	var cam := camera.global_transform
+	var mag: Node3D = parts[current]["mag"]
+	var hand := mag.global_transform * Vector3(0.0, -0.07, 0.0)          # under the magazine
+	var away := cam * Vector3(-0.22, -0.5, -0.25)                         # below the bottom left of the view
+	var k := smoothstep(reach_at, reach_at + RELOAD_HAND_LEAD, reload_t) * (1.0 - smoothstep(mt.y + 0.05, gone_at, reload_t))
+	var p := away.lerp(hand, k)
+	var elbow := cam * Vector3(-0.32, -0.6, 0.1)
+	var dir := p - elbow
+	if dir.length() < 0.01:
+		return
+	reload_arm.global_transform = Transform3D(Basis.looking_at(dir.normalized(), cam.basis.y), p)
+	reload_arm.visible = true
 
 
 ## The viewmodel offset [pos, rot] of the swing in progress at `mk` (0 -> 1): ease into the cocked pose, a fast arc through

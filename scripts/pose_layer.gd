@@ -4,12 +4,21 @@ extends SkeletonModifier3D
 ## reaction (flinch), the shot's recoil and the victim's side of a silent takedown. Everything is rotated about axes of the
 ## SKELETON space (up = +y, the model faces +z), so the same numbers work on every rig. The enemy sets the values, the
 ## layer eases them in and out. `roles` maps a role ("Hips", "Spine", "Neck", "LeftArm", ...) to a bone index.
+##
+## Holding the weapon (last, on top of everything else): the gun hangs in the right hand (CharModel.hold); `grip` turns the
+## shoulder and wrist so the barrel points at the aim point (at most AIM_MAX: the clip does the rest) and pulls the left hand
+## onto the gun's support point with a two-bone solve (the elbow keeps the clip's bend). A gun longer than the arm can reach
+## gets the hand as far as it goes along the line, so long rifles look a little stretched but the hand never floats elsewhere.
 
 const ATTACK := 40.0          # how fast a new flinch / recoil snaps in (per second)
 const FLINCH_DECAY := 4.5     # a flinch is gone after about 0.3 s
 const RECOIL_DECAY := 14.0
 const TD_RELEASE := 8.0       # the takedown pose lets go this fast when the death clip takes over
 const SWING_SNAP := 45.0      # how fast the blade fighter's cut comes in
+const GRIP_EASE := 6.0        # how fast the left hand goes onto / comes off the gun (weight per second)
+const AIM_EASE := 5.0         # how fast the barrel correction comes in / goes
+const AIM_MAX := 0.35         # the barrel is turned at most this far (radians) toward the aim point
+const AIM_ARM := 0.65         # ...this share of it by the shoulder, the rest by the wrist
 
 var roles := {}
 var _flinch := 0.0            # target 0..1
@@ -33,6 +42,14 @@ var _stride := 0.0            # 0..1 through the current gait clip (set by the e
 var _stride_move := 0.0       # 0..1 how much he is moving (no hitch standing still)
 var _arm_side := 0.0          # +1 left arm hurt, -1 right, 0 none
 var _arm := 0.0
+# the weapon in his hands (see hold_gun / grip)
+var _gun_fit := Transform3D.IDENTITY     # the gun node's transform in the right-hand bone's space (as CharModel.hold sets it)
+var _support := Vector3.INF   # where the left wrist goes, in the gun node's space (INF: one-handed)
+var _grip := 0.0              # target 0..1
+var _grip_shown := 0.0
+var _aim := 0.0               # target 0..1
+var _aim_shown := 0.0
+var _aim_at := Vector3.INF    # world point the barrel turns toward
 
 
 ## A hit from skeleton-space direction `dir` (the way the bullet flies). `part` is the hit box part, `power` 0..1.
@@ -61,8 +78,31 @@ func swing(coil: float, cut: float, side: float) -> void:
 	_swing_side = side
 
 
+## The gun is held: `fit` is its transform under the right-hand bone (CharModel.hold), `support` the left wrist's place in the gun
+## node's own space (Vector3.INF: a one-handed weapon).
+func hold_gun(fit: Transform3D, support: Vector3) -> void:
+	_gun_fit = fit
+	_support = support
+
+
+## Each tick: how much the left hand holds the gun (0..1) and how much the barrel is turned toward `aim_at` (world, 0..1).
+func grip(hold: float, aim: float = 0.0, aim_at: Vector3 = Vector3.INF) -> void:
+	_grip = clampf(hold, 0.0, 1.0)
+	_aim = clampf(aim, 0.0, 1.0) if aim_at != Vector3.INF else 0.0
+	if aim_at != Vector3.INF:
+		_aim_at = aim_at
+
+
+## Lets go of the gun at once (death: the weapon is gone).
+func release() -> void:
+	_grip = 0.0
+	_grip_shown = 0.0
+	_aim = 0.0
+	_aim_shown = 0.0
+
+
 func is_idle() -> bool:
-	return _flinch < 0.002 and _flinch_shown < 0.002 and _recoil < 0.002 and _recoil_shown < 0.002 and _td < 0.002 and _td_shown < 0.002 \
+	return _grip_shown <= 0.0 and _aim_shown <= 0.0 and _flinch < 0.002 and _flinch_shown < 0.002 and _recoil < 0.002 and _recoil_shown < 0.002 and _td < 0.002 and _td_shown < 0.002 \
 		and _coil < 0.002 and _coil_shown < 0.002 and _cut < 0.002 and _cut_shown < 0.002 and _limp <= 0.0 and _arm <= 0.0
 
 
@@ -90,12 +130,14 @@ func step(delta: float) -> void:
 		_coil_shown = 0.0
 	if _cut < 0.002 and _cut_shown < 0.002:
 		_cut_shown = 0.0
+	_grip_shown = move_toward(_grip_shown, _grip, GRIP_EASE * delta)
+	_aim_shown = move_toward(_aim_shown, _aim, AIM_EASE * delta)
 
 
 func _process_modification() -> void:
 	var sk := get_skeleton()
 	if sk == null or (_flinch_shown <= 0.0 and _recoil_shown <= 0.0 and _td_shown <= 0.0 and _coil_shown <= 0.0 and _cut_shown <= 0.0 \
-			and _limp <= 0.0 and _arm <= 0.0):
+			and _limp <= 0.0 and _arm <= 0.0 and _grip_shown <= 0.0 and _aim_shown <= 0.0):
 		return
 	if _limp > 0.0 and _td_shown <= 0.0:
 		_apply_limp(sk)
@@ -113,6 +155,86 @@ func _process_modification() -> void:
 		_turn(sk, "Spine1", back, 0.05 * _recoil_shown)
 		_turn(sk, "Spine2", back, 0.05 * _recoil_shown)
 		_turn(sk, "Head", back, -0.03 * _recoil_shown)         # the head stays on the target
+	if _td_shown <= 0.0:
+		if _aim_shown > 0.0 and _aim_at != Vector3.INF:
+			_apply_aim(sk, _aim_shown)
+		if _grip_shown > 0.0 and _support != Vector3.INF and not (_arm > 0.0 and _arm_side > 0.0):
+			_apply_support(sk, _grip_shown)      # (a hurt left arm is held to the body instead)
+
+
+# ---------------------------------------------------------------- holding the weapon
+
+## The gun node's transform in skeleton space now (it hangs under the right-hand bone).
+func _gun_xf(sk: Skeleton3D) -> Transform3D:
+	return sk.get_bone_global_pose(roles["RightHand"]) * _gun_fit
+
+
+## Turns the barrel toward the aim point: AIM_ARM of the turn at the shoulder (the whole arm and the gun swing together), the rest
+## at the wrist; never more than AIM_MAX in all.
+func _apply_aim(sk: Skeleton3D, k: float) -> void:
+	if not roles.has("RightHand") or not roles.has("RightArm"):
+		return
+	var target: Vector3 = sk.global_transform.affine_inverse() * _aim_at
+	var g := _gun_xf(sk)
+	var fwd := (g.basis * Vector3.FORWARD).normalized()
+	var want := target - g.origin
+	if want.length() < 0.001:
+		return
+	want = want.normalized()
+	var ax := fwd.cross(want)
+	if ax.length() < 0.0001:
+		return
+	var ang := minf(fwd.angle_to(want), AIM_MAX) * k
+	_turn(sk, "RightArm", ax, ang * AIM_ARM)
+	_turn(sk, "RightHand", ax, ang * (1.0 - AIM_ARM))
+
+
+## The left hand onto the gun: a two-bone solve from the shoulder to the support point (blended with where the clip put the hand by
+## `k`). The elbow bends the way the clip bends it, pulled down and out a little so a straight arm still folds the right way.
+func _apply_support(sk: Skeleton3D, k: float) -> void:
+	if not roles.has("RightHand") or not roles.has("LeftArm") or not roles.has("LeftForeArm") or not roles.has("LeftHand"):
+		return
+	var a: int = roles["LeftArm"]
+	var f: int = roles["LeftForeArm"]
+	var h: int = roles["LeftHand"]
+	var sp := sk.get_bone_global_pose(a).origin
+	var ep := sk.get_bone_global_pose(f).origin
+	var hp := sk.get_bone_global_pose(h).origin
+	var l1 := sp.distance_to(ep)
+	var l2 := ep.distance_to(hp)
+	if l1 < 0.000001 or l2 < 0.000001:
+		return
+	var goal := hp.lerp(_gun_xf(sk) * _support, k)
+	var to := goal - sp
+	if to.length() < 0.000001:
+		return
+	var dir := to.normalized()
+	var d := clampf(to.length(), absf(l1 - l2) + (l1 + l2) * 0.01, (l1 + l2) * 0.995)    # out of reach: the hand stops short on the line
+	var cosa := (l1 * l1 + d * d - l2 * l2) / (2.0 * l1 * d)
+	var ang := acos(clampf(cosa, -1.0, 1.0))
+	var bend := (ep - sp) - dir * (ep - sp).dot(dir)
+	var pole := (bend.normalized() if bend.length() > l1 * 0.05 else Vector3.ZERO) + Vector3(0.45, -0.9, -0.2)     # his left is +x, down is -y
+	pole -= dir * pole.dot(dir)
+	if pole.length() < 0.0001:
+		return
+	pole = pole.normalized()
+	var elbow := sp + (dir * cos(ang) + pole * sin(ang)) * l1
+	_point(sk, a, ep, elbow)
+	_point(sk, f, sk.get_bone_global_pose(h).origin, sp + dir * d)
+
+
+## Turns `bone` (by the shortest arc, keeping its twist) so the child joint now at `child_now` ends up at `child_want` (skeleton space).
+func _point(sk: Skeleton3D, bone: int, child_now: Vector3, child_want: Vector3) -> void:
+	var g := sk.get_bone_global_pose(bone)
+	var cur := child_now - g.origin
+	var want := child_want - g.origin
+	if cur.length() < 0.000001 or want.length() < 0.000001:
+		return
+	var q := Quaternion(cur.normalized(), want.normalized())
+	var p := sk.get_bone_parent(bone)
+	var pb := sk.get_bone_global_pose(p).basis.orthonormalized() if p >= 0 else Basis.IDENTITY
+	var nb := Basis(q) * g.basis.orthonormalized()
+	sk.set_bone_pose_rotation(bone, (pb.inverse() * nb).get_rotation_quaternion())
 
 
 ## Flinch: the torso is shoved along the blow and snaps back; a head shot whips the head, a leg shot buckles the knees,
