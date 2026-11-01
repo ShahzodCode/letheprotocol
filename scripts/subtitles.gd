@@ -158,7 +158,7 @@ func _process(delta: float) -> void:
 		(l["panel"] as Control).modulate.a = clampf(float(l["t"]) / 0.5, 0.0, 1.0) * (0.6 if older else 1.0)
 	if _lines.is_empty():
 		return
-	var vs := get_viewport().get_visible_rect().size
+	var vs := (get_parent() as Control).size          # the HUD's scaled layer
 	var h := _box.get_combined_minimum_size().y
 	_box.size = Vector2(WIDTH, h)
 	_box.position = Vector2(vs.x * 0.5 - WIDTH * 0.5, vs.y - BOTTOM - h)

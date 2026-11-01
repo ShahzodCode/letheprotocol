@@ -6,10 +6,12 @@ extends CanvasLayer
 const ACCENT := Color(0.2, 0.85, 0.8)
 const PLATE := Color(0.05, 0.07, 0.08, 0.72)
 const GOLD := Color(0.95, 0.8, 0.35)
-const AMMO_SIZE := Vector2(236, 72)
+const HUD_SCALE := 0.62        # size of the gameplay HUD (text, boxes, weapon pictures), 1.0 = as written in this file
+const AMMO_SIZE := Vector2(132, 60)
 const SLOT_FADE := 0.4         # the slot picker fades out over its last seconds
 
 var player: Player
+var ui_root: Control           # the gameplay layer, scaled by HUD_SCALE
 var health_blocks: Array[ColorRect] = []
 var health_label: Label
 var arm_icon: Control              # the wounded-arm icon on the health plate (Game.arm_injured)
@@ -207,8 +209,8 @@ class _ArmIcon extends Control:
 
 ## The weapons of one slot, shown for a moment after its number key: the chosen one lit, the other one faded.
 class _SlotPicker extends Control:
-	const BOX := Vector2(316, 76)
-	const CARD := Vector2(154, 76)
+	const BOX := Vector2(176, 46)
+	const CARD := Vector2(84, 46)
 	const FADED := 0.32
 	var weapons: Array = []        # the weapon ids of the slot, right-aligned when there is only one
 	var chosen := 0
@@ -224,8 +226,8 @@ class _SlotPicker extends Control:
 			var w: Dictionary = WeaponsDB.WEAPONS[weapons[i]]
 			var tex := HUD.weapon_texture(weapons[i])
 			if tex != null:
-				draw_texture_rect(tex, Rect2(x + 10.0, 6.0, CARD.x - 20.0, (CARD.x - 20.0) * 0.375), false, Color(1, 1, 1, a))
-			draw_string(font, Vector2(x + 10.0, CARD.y - 8.0), String(w["short"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, a))
+				draw_texture_rect(tex, Rect2(x + 10.0, 4.0, CARD.x - 20.0, (CARD.x - 20.0) * 0.375), false, Color(1, 1, 1, a))
+			draw_string(font, Vector2(x + 10.0, CARD.y - 6.0), String(w["short"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, a))
 			if on:
 				draw_rect(Rect2(x, CARD.y - 2.0, CARD.x, 2.0), ACCENT)
 
@@ -335,6 +337,16 @@ void fragment() {
 	stealth.set_anchors_preset(Control.PRESET_FULL_RECT)
 	stealth.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(stealth)
+
+	# the gameplay layer: all its text and boxes shrink together with HUD_SCALE (_layout gives it the screen's size in its own pixels);
+	# what covers the whole screen (crosshair, scope, death, win, pause, map) stays on `screen`
+	var screen := root
+	ui_root = Control.new()
+	ui_root.scale = Vector2.ONE * HUD_SCALE
+	ui_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	screen.add_child(ui_root)
+	root = ui_root
+
 	context_hint = _Context.new()
 	context_hint.size = Vector2(190, 46)
 	context_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -383,25 +395,25 @@ void fragment() {
 	ammo_plate = _plate(root, Vector2(0, 0), AMMO_SIZE)
 	var ap := ammo_plate
 	weapon_pic = TextureRect.new()
-	weapon_pic.position = Vector2(10, 8)
-	weapon_pic.size = Vector2(142, 56)
+	weapon_pic.position = Vector2(8, 17)
+	weapon_pic.size = Vector2(66, 26)
 	weapon_pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	weapon_pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	weapon_pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ap.add_child(weapon_pic)
 	var divider := ColorRect.new()
 	divider.color = Color(1, 1, 1, 0.14)
-	divider.position = Vector2(160, 12)
-	divider.size = Vector2(1, AMMO_SIZE.y - 24.0)
+	divider.position = Vector2(80, 10)
+	divider.size = Vector2(1, AMMO_SIZE.y - 20.0)
 	divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ap.add_child(divider)
-	ammo_big = _label(ap, "15", 34, Color.WHITE)
-	ammo_big.position = Vector2(164, 0)
-	ammo_big.size = Vector2(62, 46)
+	ammo_big = _label(ap, "15", 30, Color.WHITE)
+	ammo_big.position = Vector2(82, -2)
+	ammo_big.size = Vector2(44, 40)
 	ammo_big.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	ammo_small = _label(ap, "60", 14, Color(0.72, 0.77, 0.78))
-	ammo_small.position = Vector2(164, 44)
-	ammo_small.size = Vector2(62, 22)
+	ammo_small.position = Vector2(82, 35)
+	ammo_small.size = Vector2(44, 20)
 	ammo_small.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	reload_bg = ColorRect.new()
 	reload_bg.color = Color(1, 1, 1, 0.12)
@@ -453,20 +465,20 @@ void fragment() {
 	hint.size = Vector2(760, 44)
 
 	# death screen
-	death_panel = _overlay(root, Color(0.35, 0.0, 0.0, 0.55))
-	var dt := _label(death_panel, "YOU DIED", 64, Settings.danger())
+	death_panel = _overlay(screen, Color(0.35, 0.0, 0.0, 0.55))
+	var dt := _label(death_panel, "YOU DIED", 40, Settings.danger())
 	death_title = dt
 	_last_cb = Settings.colorblind
 	dt.set_anchors_preset(Control.PRESET_CENTER)
 	dt.position = Vector2(-200, -90)
 	dt.size = Vector2(400, 80)
 	dt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	death_reason = _label(death_panel, "", 26, Color(1.0, 0.88, 0.85))
+	death_reason = _label(death_panel, "", 16, Color(1.0, 0.88, 0.85))
 	death_reason.set_anchors_preset(Control.PRESET_CENTER)
 	death_reason.position = Vector2(-400, -22)
 	death_reason.size = Vector2(800, 36)
 	death_reason.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	death_stats = _label(death_panel, "", 20, Color.WHITE)
+	death_stats = _label(death_panel, "", 13, Color.WHITE)
 	death_stats.set_anchors_preset(Control.PRESET_CENTER)
 	death_stats.position = Vector2(-250, 25)
 	death_stats.size = Vector2(500, 80)
@@ -483,14 +495,14 @@ void fragment() {
 	interact_label = _label(root, "", 26, Color.WHITE)
 	interact_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	interact_label.size = Vector2(600, 36)
-	win_panel = _overlay(root, Color(0.0, 0.2, 0.15, 0.6))
-	var wt := _label(win_panel, "HOME", 56, ACCENT)
+	win_panel = _overlay(screen, Color(0.0, 0.2, 0.15, 0.6))
+	var wt := _label(win_panel, "HOME", 36, ACCENT)
 	win_title_label = wt
 	wt.set_anchors_preset(Control.PRESET_CENTER)
 	wt.position = Vector2(-300, -90)
 	wt.size = Vector2(600, 80)
 	wt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	win_stats = _label(win_panel, "", 20, Color.WHITE)
+	win_stats = _label(win_panel, "", 13, Color.WHITE)
 	win_stats.set_anchors_preset(Control.PRESET_CENTER)
 	win_stats.position = Vector2(-250, -5)
 	win_stats.size = Vector2(500, 100)
@@ -498,13 +510,13 @@ void fragment() {
 	win_panel.visible = false
 
 	# pause screen: a menu with graphics settings and a short guide to the movement
-	pause_panel = _overlay(root, Color(0, 0, 0, 0.7))
+	pause_panel = _overlay(screen, Color(0, 0, 0, 0.7))
 	pause_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	_build_pause_menu()
 	pause_panel.visible = false
 	map_view = MapView.new()
 	map_view.visible = false
-	root.add_child(map_view)
+	screen.add_child(map_view)
 
 	Game.player_died.connect(_on_died)
 	Game.goal_reached.connect(_on_goal)
@@ -682,7 +694,8 @@ func _set_paused(p: bool) -> void:
 
 
 func _layout() -> void:
-	var vs := get_viewport().get_visible_rect().size
+	var vs := get_viewport().get_visible_rect().size / HUD_SCALE
+	ui_root.size = vs
 	health_plate.position = Vector2(16, vs.y - 78)
 	ammo_plate.position = vs - AMMO_SIZE - Vector2(16, 16)
 	slot_picker.position = vs - _SlotPicker.BOX - Vector2(16, 16 + AMMO_SIZE.y + 8.0)
@@ -743,7 +756,7 @@ func _process(delta: float) -> void:
 	weapon_pic.texture = weapon_texture(w.current)
 	var melee := w.is_melee()
 	ammo_big.visible = not melee
-	ammo_small.position.y = 25.0 if melee else 44.0
+	ammo_small.position.y = 20.0 if melee else 35.0
 	if melee:
 		ammo_small.text = String(s["short"])
 	else:
