@@ -235,13 +235,10 @@ func _register_inputs() -> void:
 	_key("pickup", KEY_Q)
 	_key("interact", KEY_E)
 	_key("grenade", KEY_G)
-	_key("cycle_weapon", KEY_TAB)
 	_key("restart", KEY_R)
 	_key("pause", KEY_ESCAPE)
 	_key("debug_overlay", KEY_F3)
 	_key("map", KEY_M)
 	_mouse("fire", MOUSE_BUTTON_LEFT)
 	_mouse("aim", MOUSE_BUTTON_RIGHT)
-	_mouse("wheel_up", MOUSE_BUTTON_WHEEL_UP)
-	_mouse("wheel_down", MOUSE_BUTTON_WHEEL_DOWN)
 	Settings.apply_keys()          # the player's own bindings (settings.cfg [keys]) over the defaults

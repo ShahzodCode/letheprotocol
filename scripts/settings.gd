@@ -38,7 +38,7 @@ const BINDABLE := [
 	["move_forward", "Forward"], ["move_back", "Back"], ["move_left", "Left"], ["move_right", "Right"],
 	["jump", "Jump"], ["sprint", "Sprint"], ["crouch", "Crouch / slide"],
 	["fire", "Fire"], ["aim", "Aim"], ["reload", "Reload"], ["grenade", "Grenade (hold)"],
-	["slot_1", "Pistol slot"], ["slot_2", "Rifle slot"], ["slot_3", "Melee slot"], ["cycle_weapon", "Next weapon"],
+	["slot_1", "Pistol slot"], ["slot_2", "Rifle slot"], ["slot_3", "Melee slot"],
 	["pickup", "Pick up"], ["interact", "Interact / takedown"], ["map", "Map and objectives"],
 ]
 static var defaults := {}           # action -> code, taken from the input map before any saved binding is applied

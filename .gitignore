@@ -9,6 +9,8 @@ docs_backup/
 /Lethe Protocol.exe
 /Lethe Protocol.console.exe
 /Ready Game Files/
+# generated knowledge graph
+graphify-out/
 # private / not for the public repo
 The Story/
 PROMPTS.md

@@ -20,7 +20,6 @@ A first-person shooter prototype in Godot 4.7 (GDScript, GL Compatibility render
 | Right mouse | aim down sights |
 | R | reload (restart from the last checkpoint on the death screen, Shift+R = whole mission) |
 | 1 / 2 / 3 | pistol / rifle / melee slot (press again = the slot's other weapon) |
-| Tab / mouse wheel | cycle weapons |
 | Q | pick up a weapon |
 | E | interact, silent takedown from behind with a melee weapon |
 | G | hold = grenade arc, release = throw (tap = throw at once) |

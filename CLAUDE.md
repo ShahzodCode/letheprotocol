@@ -16,6 +16,7 @@ First-person shooter prototype in Godot 4.7 (GDScript, GL Compatibility). One ma
 - Smoke check (start and end of a task): `powershell -ExecutionPolicy Bypass -File tests/smoke.ps1`
 - Only on request: full selftest `godot --headless --fixed-fps 120 --path . -- --selftest`, one function `-- --script res://tests/one.gd <function>`, tool scripts in tests/ (see docs/commands-and-testing.md).
 - On Windows `Godot.exe` captures no shell output: tests/smoke.ps1 handles it.
+- Optional, only for dependency or refactor questions: the knowledge graph in `graphify-out/` (`graphify query "<question>"`). It is a snapshot and may be out of date, so confirm against the source; for everything else use the docs table below and plain search. Do not rebuild it unless the user asks. Graphify cannot read GDScript: a rebuild runs `tools/gd_extract.py` from the project root after its code extraction step, or the graph loses all `.gd` code.
 
 ## If your task touches X, read docs/Y.md first
 Do not read docs files that are not related to the task.

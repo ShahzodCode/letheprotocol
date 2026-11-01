@@ -1,8 +1,41 @@
 class_name Sfx
-## Synthesised sounds (no audio files): built once, cached, played through throw-away AudioStreamPlayers.
+## Sounds: synthesised ones built once and cached, plus the recorded ones in FILES (which take over the same id).
+## Played through throw-away AudioStreamPlayers.
 
 const RATE := 22050
+const FILES := {
+	"pistol": "res://audio/sfx/pistol_shot.wav",
+	"pistol_reload": "res://audio/sfx/pistol_reload.wav",
+	"whip": "res://audio/sfx/rifle_shot.wav",      # the first rifle's shot, for the player and the soldiers alike
+	"rifle_reload": "res://audio/sfx/rifle_reload.wav",
+	"snipe": ["res://audio/sfx/rg5_shot_1.wav", "res://audio/sfx/rg5_shot_2.wav"],        # a list: one at random each time
+	"longshot": ["res://audio/sfx/lr9_shot_1.wav", "res://audio/sfx/lr9_shot_2.wav"],
+	"sniper_reload": "res://audio/sfx/sniper_reload.wav",
+}
 static var _cache := {}
+static var _files := {}             # path -> AudioStream
+
+
+## What `play` plays: the recorded file of an id if it has one, else the synthesised sound.
+static func stream(id: String) -> AudioStream:
+	if not FILES.has(id):
+		return get_sound(id)
+	var file: Variant = FILES[id]
+	return _file(String(file.pick_random() if file is Array else file))
+
+
+static func _file(path: String) -> AudioStream:
+	if not _files.has(path):
+		_files[path] = load(path)
+	return _files[path]
+
+
+## Loads every recorded sound, so that none is loaded on its first shot.
+static func load_files() -> void:
+	for id in FILES:
+		var file: Variant = FILES[id]
+		for path in (file if file is Array else [file]):
+			_file(String(path))
 
 
 static func _make(duration: float, fn: Callable) -> AudioStreamWAV:
@@ -327,21 +360,22 @@ static func get_sound(id: String) -> AudioStreamWAV:
 	return s
 
 
-## Fire-and-forget 2D sound.
-static func play(parent: Node, id: String, volume_db: float = 0.0, pitch: float = 1.0) -> void:
+## Fire-and-forget 2D sound (returns the player for a sound that may have to be cut short).
+static func play(parent: Node, id: String, volume_db: float = 0.0, pitch: float = 1.0) -> AudioStreamPlayer:
 	var p := AudioStreamPlayer.new()
-	p.stream = get_sound(id)
+	p.stream = stream(id)
 	p.volume_db = volume_db
 	p.pitch_scale = pitch
 	parent.add_child(p)
 	p.finished.connect(p.queue_free)
 	p.play()
+	return p
 
 
 ## Fire-and-forget positional sound (quieter and duller with distance via the engine's attenuation).
 static func play_at(parent: Node, pos: Vector3, id: String, volume_db: float = 0.0, pitch: float = 1.0, max_dist: float = 80.0, unit_size: float = 8.0) -> void:
 	var p := AudioStreamPlayer3D.new()
-	p.stream = get_sound(id)
+	p.stream = stream(id)
 	p.volume_db = volume_db
 	p.pitch_scale = pitch
 	p.max_distance = max_dist

@@ -85,3 +85,17 @@ of the Japanese building left out. For the CC-BY ones say so in the credits ("ad
 | `japanese_building__cc0.glb` | "Japanese Building \| CC0" (titled CC0, but the download carries the Sketchfab Standard licence) | Lit For 20 (https://sketchfab.com/LitFor20) | Sketchfab Standard, https://sketchfab.com/3d-models/japanese-building-cc0-4bde4dd51a3f4cacabc22324a7d0c62c |
 
 As with the cars: the four Sketchfab Standard files may be used in the game but not handed on as files on their own.
+
+## Sounds in `audio/sfx/`
+
+Author names are read from the download file names only. The licence terms were not checked: **TO LOOK UP** on the original
+download pages before the game is shared or published. All of them were changed for the game: trimmed, levelled, made mono, and the four shots of the sniper file cut apart.
+
+| File | Original file | Author | Licence |
+|---|---|---|---|
+| `pistol_shot.wav` | `universfield-pistol-shot-278821.mp3` | Universfield | **TO LOOK UP** |
+| `pistol_reload.wav` | `freesound_community-1911-reload-6248.mp3` | freesound_community | **TO LOOK UP** |
+| `rifle_shot.wav` | `dev_guy-semi-automatic-riflepistol-shot-389472.mp3` | dev_guy | **TO LOOK UP** |
+| `rifle_reload.wav` | `squarebun-m4a1-reload-sound-316890.mp3` | squarebun | **TO LOOK UP** |
+| `lr9_shot_1.wav`, `lr9_shot_2.wav`, `rg5_shot_1.wav`, `rg5_shot_2.wav` | `freesound_community-sniper-fire-105896.mp3` | freesound_community | **TO LOOK UP** |
+| `sniper_reload.wav` | `freesound_community-assault-rifle-reload-104296.mp3` | freesound_community | **TO LOOK UP** |

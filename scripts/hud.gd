@@ -6,6 +6,8 @@ extends CanvasLayer
 const ACCENT := Color(0.2, 0.85, 0.8)
 const PLATE := Color(0.05, 0.07, 0.08, 0.72)
 const GOLD := Color(0.95, 0.8, 0.35)
+const AMMO_SIZE := Vector2(236, 72)
+const SLOT_FADE := 0.4         # the slot picker fades out over its last seconds
 
 var player: Player
 var health_blocks: Array[ColorRect] = []
@@ -13,7 +15,7 @@ var health_label: Label
 var arm_icon: Control              # the wounded-arm icon on the health plate (Game.arm_injured)
 var ammo_big: Label
 var ammo_small: Label
-var weapon_name: Label
+var weapon_pic: TextureRect
 var reload_bar: ColorRect
 var reload_bg: ColorRect
 var kills_label: Label
@@ -40,8 +42,8 @@ var compass: Compass
 var map_view: MapView
 var health_plate: Panel
 var ammo_plate: Panel
-var mags: _Mags
-var loadout_view: _Loadout
+var slot_picker: _SlotPicker
+static var _weapon_textures := {}
 var pickup_plate: Panel
 var pickup_key: Label
 var pickup_icon: _Icon
@@ -203,71 +205,37 @@ class _ArmIcon extends Control:
 			queue_redraw()
 
 
-## Magazine strip: the loaded magazine first (highlighted), then every spare one, each filled by its rounds.
-class _Mags extends Control:
-	var loaded := 0
-	var cap := 0
-	var spares: Array = []
-
-	func _draw() -> void:
-		if cap <= 0:
-			return
-		var font := ThemeDB.fallback_font
-		var bw := 20.0
-		var bh := 34.0
-		var x := 0.0
-		for i in spares.size() + 1:
-			var rounds := loaded if i == 0 else int(spares[i - 1])
-			var frac := clampf(float(rounds) / float(cap), 0.0, 1.0)
-			var r := Rect2(x, 0, bw, bh)
-			draw_rect(r, Color(1, 1, 1, 0.1))
-			var col := Color(0.2, 0.85, 0.8) if i == 0 else Color(0.95, 0.8, 0.35)
-			if i == 0 and frac <= 0.25:
-				col = Settings.danger()
-			elif i > 0 and frac < 1.0:
-				col = Color(0.75, 0.62, 0.3)
-			draw_rect(Rect2(x, bh * (1.0 - frac), bw, bh * frac), col)
-			if i == 0:
-				draw_rect(r, Color(0.2, 0.85, 0.8, 0.9), false, 1.5)
-				x += bw + 12.0
-				draw_line(Vector2(x - 6.0, 0), Vector2(x - 6.0, bh), Color(1, 1, 1, 0.25), 1.0)
-			else:
-				x += bw + 4.0
-			var label_x := r.position.x + 1.0
-			draw_string(font, Vector2(label_x, bh + 13.0), str(rounds), HORIZONTAL_ALIGNMENT_LEFT, bw, 11, Color(1, 1, 1, 0.75))
-
-
-## The three slots with their two weapons each; the one in hand is lit.
-class _Loadout extends Control:
-	var data := {}
-	var active_slot := ""
-	var active_idx := 0
+## The weapons of one slot, shown for a moment after its number key: the chosen one lit, the other one faded.
+class _SlotPicker extends Control:
+	const BOX := Vector2(316, 76)
+	const CARD := Vector2(154, 76)
+	const FADED := 0.32
+	var weapons: Array = []        # the weapon ids of the slot, right-aligned when there is only one
+	var chosen := 0
 
 	func _draw() -> void:
 		var font := ThemeDB.fallback_font
-		var gx := 0.0
-		var n := 1
-		for slot in ["pistol", "rifle", "melee"]:
-			draw_string(font, Vector2(gx, 11), "%d  %s" % [n, WeaponsDB.SLOT_NAMES[slot]], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 1, 1, 0.55))
-			for i in 2:
-				var r := Rect2(gx + i * 46.0, 16, 42, 32)
-				var arr: Array = data.get(slot, [])
-				var on: bool = slot == active_slot and i == active_idx
-				draw_rect(r, Color(0.05, 0.07, 0.08, 0.72))
-				if i < arr.size():
-					var inst: Dictionary = arr[i]
-					var w: Dictionary = WeaponsDB.WEAPONS[inst["id"]]
-					var glow: Color = w.get("glow", Color(0.8, 0.8, 0.85))
-					draw_rect(Rect2(r.position.x, r.position.y, 3, r.size.y), glow)
-					draw_string(font, r.position + Vector2(6, 14), String(w["short"]), HORIZONTAL_ALIGNMENT_LEFT, 36, 11, Color(1, 1, 1, 1.0 if on else 0.6))
-					if not bool(w.get("melee", false)):
-						draw_string(font, r.position + Vector2(6, 27), "%d" % int(inst["ammo"]), HORIZONTAL_ALIGNMENT_LEFT, 36, 11, Color(0.95, 0.8, 0.35, 1.0 if on else 0.55))
-				else:
-					draw_string(font, r.position + Vector2(14, 20), "-", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.25))
-				if on:
-					draw_rect(r, Color(0.2, 0.85, 0.8, 0.95), false, 2.0)
-			gx += 88.0 + 14.0
-			n += 1
+		for i in weapons.size():
+			var x := BOX.x - (weapons.size() - i) * (CARD.x + 8.0) + 8.0
+			var on := i == chosen
+			var a := 1.0 if on else FADED
+			var r := Rect2(Vector2(x, 0), CARD)
+			draw_rect(r, Color(PLATE.r, PLATE.g, PLATE.b, PLATE.a * a))
+			var w: Dictionary = WeaponsDB.WEAPONS[weapons[i]]
+			var tex := HUD.weapon_texture(weapons[i])
+			if tex != null:
+				draw_texture_rect(tex, Rect2(x + 10.0, 6.0, CARD.x - 20.0, (CARD.x - 20.0) * 0.375), false, Color(1, 1, 1, a))
+			draw_string(font, Vector2(x + 10.0, CARD.y - 8.0), String(w["short"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, a))
+			if on:
+				draw_rect(Rect2(x, CARD.y - 2.0, CARD.x, 2.0), ACCENT)
+
+
+## The HUD picture of a weapon (rendered by tests/weapon_icons.gd), null if it is missing.
+static func weapon_texture(id: String) -> Texture2D:
+	if not _weapon_textures.has(id):
+		var path := "res://ui/weapons/%s.png" % id
+		_weapon_textures[id] = load(path) if ResourceLoader.exists(path) else null
+	return _weapon_textures[id]
 
 
 ## Side-on picture of a weapon for the pick-up box: the weapon's own parts (GunModels.profile) drawn as rectangles,
@@ -411,24 +379,34 @@ void fragment() {
 	arm_icon.visible = false
 	hp.add_child(arm_icon)
 
-	# ammo box (bottom right)
-	ammo_plate = _plate(root, Vector2(0, 0), Vector2(122, 48))
+	# weapon box (bottom right): the gun in hand, the rounds in its magazine, the rounds left behind them
+	ammo_plate = _plate(root, Vector2(0, 0), AMMO_SIZE)
 	var ap := ammo_plate
-	weapon_name = _label(ap, "M9 PISTOL", 10, Color(0.75, 0.8, 0.8))
-	weapon_name.position = Vector2(8, 0)
-	ammo_big = _label(ap, "15", 24, Color.WHITE)
-	ammo_big.position = Vector2(8, 10)
-	ammo_small = _label(ap, "/ 60", 11, GOLD)
-	ammo_small.position = Vector2(52, 21)
-	mags = _Mags.new()
-	mags.position = Vector2(12, 56)
-	mags.size = Vector2(266, 50)
-	mags.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	ap.add_child(mags)
+	weapon_pic = TextureRect.new()
+	weapon_pic.position = Vector2(10, 8)
+	weapon_pic.size = Vector2(142, 56)
+	weapon_pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	weapon_pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	weapon_pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ap.add_child(weapon_pic)
+	var divider := ColorRect.new()
+	divider.color = Color(1, 1, 1, 0.14)
+	divider.position = Vector2(160, 12)
+	divider.size = Vector2(1, AMMO_SIZE.y - 24.0)
+	divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ap.add_child(divider)
+	ammo_big = _label(ap, "15", 34, Color.WHITE)
+	ammo_big.position = Vector2(164, 0)
+	ammo_big.size = Vector2(62, 46)
+	ammo_big.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	ammo_small = _label(ap, "60", 14, Color(0.72, 0.77, 0.78))
+	ammo_small.position = Vector2(164, 44)
+	ammo_small.size = Vector2(62, 22)
+	ammo_small.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	reload_bg = ColorRect.new()
 	reload_bg.color = Color(1, 1, 1, 0.12)
-	reload_bg.size = Vector2(106, 3)
-	reload_bg.position = Vector2(8, 42)
+	reload_bg.size = Vector2(AMMO_SIZE.x, 3)
+	reload_bg.position = Vector2(0, AMMO_SIZE.y - 3.0)
 	reload_bg.visible = false
 	ap.add_child(reload_bg)
 	reload_bar = ColorRect.new()
@@ -436,11 +414,12 @@ void fragment() {
 	reload_bar.size = Vector2(0, 3)
 	reload_bg.add_child(reload_bar)
 
-	# weapon slots strip (above the ammo box)
-	loadout_view = _Loadout.new()
-	loadout_view.size = Vector2(290, 52)
-	loadout_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(loadout_view)
+	# the slot picker (above the weapon box), only for a moment after a number key
+	slot_picker = _SlotPicker.new()
+	slot_picker.size = _SlotPicker.BOX
+	slot_picker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot_picker.visible = false
+	root.add_child(slot_picker)
 
 	# pick-up box (right side of the screen), shown while standing over a weapon
 	pickup_plate = _plate(root, Vector2(0, 0), Vector2(300, 150))
@@ -465,10 +444,10 @@ void fragment() {
 
 	# controls hint
 	var k := func(a: String) -> String: return Settings.key_name(a)
-	hint = _label(root, "%s%s%s%s move   %s sprint   %s crouch / slide   %s jump   %s fire   %s aim   %s reload   ESC pause\n%s / %s / %s weapon slots (again = swap)   %s pick up   %s interact   %s / wheel cycle   %s map" % [
+	hint = _label(root, "%s%s%s%s move   %s sprint   %s crouch / slide   %s jump   %s fire   %s aim   %s reload   ESC pause\n%s / %s / %s weapon slots (again = swap)   %s pick up   %s interact   %s map" % [
 		k.call("move_forward"), k.call("move_left"), k.call("move_back"), k.call("move_right"), k.call("sprint"), k.call("crouch"), k.call("jump"),
 		k.call("fire"), k.call("aim"), k.call("reload"), k.call("slot_1"), k.call("slot_2"), k.call("slot_3"), k.call("pickup"), k.call("interact"),
-		k.call("cycle_weapon"), k.call("map")], 15, Color(1, 1, 1, 0.85))
+		k.call("map")], 15, Color(1, 1, 1, 0.85))
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.size = Vector2(760, 44)
@@ -705,17 +684,30 @@ func _set_paused(p: bool) -> void:
 func _layout() -> void:
 	var vs := get_viewport().get_visible_rect().size
 	health_plate.position = Vector2(16, vs.y - 78)
-	ammo_plate.position = Vector2(vs.x - 138, vs.y - 64)
-	loadout_view.position = Vector2(vs.x - 306, vs.y - 120)
+	ammo_plate.position = vs - AMMO_SIZE - Vector2(16, 16)
+	slot_picker.position = vs - _SlotPicker.BOX - Vector2(16, 16 + AMMO_SIZE.y + 8.0)
 	pickup_plate.position = Vector2(vs.x - 316, vs.y * 0.5 - 75)
 	objective_label.position = Vector2(vs.x * 0.5 - 300, 14)
-	grenade_badge.position = Vector2(vs.x - 138 - 96, vs.y - 64 + 4)
+	grenade_badge.position = vs - Vector2(16.0 + AMMO_SIZE.x + 96.0, 16.0 + AMMO_SIZE.y - 8.0)
 	compass.position = Vector2(vs.x * 0.5 - Compass.WIDTH * 0.5, 44)
 	toast_label.position = Vector2(vs.x * 0.5 - 300, 84 if compass.visible else 48)
 	interact_label.position = Vector2(vs.x * 0.5 - 300, vs.y * 0.62)
 	context_hint.position = Vector2(vs.x * 0.5 - 95, vs.y * 0.62 + 34)
 	notice_label.position = Vector2(vs.x - 416, vs.y * 0.5 - 112)
 	hint.position = Vector2(vs.x * 0.5 - 380, vs.y - 64)
+
+
+func _update_slot_picker(w: Weapons) -> void:
+	slot_picker.visible = w.slot_flash_t > 0.0 and not Game.dead
+	if not slot_picker.visible:
+		return
+	slot_picker.modulate.a = clampf(w.slot_flash_t / SLOT_FADE, 0.0, 1.0)
+	var ids: Array = []
+	for inst in w.loadout[w.slot_flash]:
+		ids.append(inst["id"])
+	slot_picker.weapons = ids
+	slot_picker.chosen = w.slot_choice(w.slot_flash)
+	slot_picker.queue_redraw()
 
 
 func _update_pickup_box(w: Weapons) -> void:
@@ -736,7 +728,7 @@ func _update_pickup_box(w: Weapons) -> void:
 		var spare_n := int(d["spare_mags"]) if pk.spare == null else (pk.spare as Array).size()
 		info = "%d / %d rounds in the gun   +%d spare mags" % [pk.ammo, int(d["mag"]), spare_n]
 	var arr: Array = w.loadout[slot]
-	if arr.size() >= Weapons.MAX_PER_SLOT:
+	if arr.size() >= int(Weapons.MAX_PER_SLOT[slot]):
 		var idx := w.active_idx if w.active_slot == slot else mini(int(w.last_idx[slot]), arr.size() - 1)
 		info += "\nreplaces  %s" % String(WeaponsDB.WEAPONS[arr[idx]["id"]]["name"])
 	pickup_info.text = info
@@ -748,29 +740,23 @@ func _process(delta: float) -> void:
 	_layout()
 	var w := player.weapons
 	var s := w.stats()
-	weapon_name.text = String(s["name"])
+	weapon_pic.texture = weapon_texture(w.current)
 	var melee := w.is_melee()
 	ammo_big.visible = not melee
-	ammo_small.visible = not melee
-	mags.visible = false          # only the number of spare magazines is shown
-	if not melee:
+	ammo_small.position.y = 25.0 if melee else 44.0
+	if melee:
+		ammo_small.text = String(s["short"])
+	else:
 		ammo_big.text = str(w.ammo())
 		ammo_big.add_theme_color_override("font_color", Settings.danger() if w.ammo() <= int(int(s["mag"]) * 0.25) else Color.WHITE)
-		ammo_small.text = "MAGS  %d" % w.spare_mags()
-		mags.loaded = w.ammo()
-		mags.cap = int(s["mag"])
-		mags.spares = (w.state[w.current]["spare"] as Array).duplicate()
-		mags.queue_redraw()
-	loadout_view.data = w.loadout
-	loadout_view.active_slot = w.active_slot
-	loadout_view.active_idx = w.active_idx
-	loadout_view.queue_redraw()
+		ammo_small.text = str(w.reserve())
+	_update_slot_picker(w)
 	_update_pickup_box(w)
 	notice_label.text = w.notice
 	notice_label.modulate.a = clampf(w.notice_t / 0.6, 0.0, 1.0)
 	if w.reloading:
 		reload_bg.visible = true
-		reload_bar.size.x = 106.0 * clampf(w.reload_t / w.reload_total(), 0.0, 1.0)
+		reload_bar.size.x = AMMO_SIZE.x * clampf(w.reload_t / w.reload_total(), 0.0, 1.0)
 	else:
 		reload_bg.visible = false
 

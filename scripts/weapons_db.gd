@@ -33,6 +33,8 @@ const WEAPONS := {
 		"rot_y": 90.0, "length": 0.3, "top_y": 0.05, "center_z": 0.0, "mirror_z": 3.7678,
 		"ads_pos": Vector3(0.0, -0.057, -0.4),
 		"color": Color(0.12, 0.12, 0.14),
+		"reload_sound": "pistol_reload",   # recorded: ends as the reload ends
+		"reload_beats": [0.02, 0.325],     # seconds into that clip: the mag seats, the slide closes (the gun jolts on each)
 	},
 	"rifle": {
 		"name": "PR-1 PULSE RIFLE", "short": "PR-1", "slot": "rifle",
@@ -64,6 +66,7 @@ const WEAPONS := {
 		"model": "",           # the invaders' pulse rifle: procedural (GunModels._rifle), white bolt, whip-crack
 		"rot_y": 0.0, "length": 0.95, "top_y": 0.07, "center_z": -0.2, "mirror_z": 0.0,
 		"ads_pos": Vector3(0.0, -0.062, -0.46), "glow": Color(0.92, 0.96, 1.0), "sound": "whip", "sound_pitch": 1.0, "casing": false, "tracer_w": 0.012,
+		"reload_sound": "rifle_reload", "reload_beats": [0.105, 0.835, 1.07, 1.865, 2.22],     # mag out, mag in, slap, handle back, handle home
 		"color": Color(0.1, 0.1, 0.11),
 	},
 	# ---- weapons carried by enemies (blocky viewmodels, energy weapons: no brass, own sounds) ----
@@ -102,6 +105,7 @@ const WEAPONS := {
 		"model": "", "rot_y": 0.0, "length": 1.15, "top_y": 0.08, "center_z": -0.26, "mirror_z": 0.0,
 		"ads_pos": Vector3(0.0, -0.068, -0.4), "color": Color(0.62, 0.64, 0.68), "glow": Color(1.0, 0.15, 0.12),
 		"sound": "snipe", "sound_pitch": 1.0, "casing": false,
+		"reload_sound": "sniper_reload", "reload_beats": [0.01, 0.33, 0.845, 1.99, 2.41],
 	},
 	"sniper": {   # the marksman on the balcony (Chapter One, "The Lander"): heavy bolt-action long rifle, slow shells that drop
 		"name": "LR-9 LONG RIFLE", "short": "LR-9", "slot": "rifle",
@@ -114,6 +118,7 @@ const WEAPONS := {
 		"model": "", "rot_y": 0.0, "length": 1.3, "top_y": 0.08, "center_z": -0.3, "mirror_z": 0.0,
 		"ads_pos": Vector3(0.0, -0.07, -0.4), "color": Color(0.18, 0.17, 0.16), "glow": Color(1.0, 0.72, 0.4),
 		"sound": "longshot", "sound_pitch": 1.0, "casing": true, "tracer_w": 0.02,
+		"reload_sound": "sniper_reload", "reload_beats": [0.01, 0.33, 0.845, 1.99, 2.41],
 		"bolt": true,             # a bolt is worked after every shot (sound; the rpm is the cycle time)
 		"heavy": true,            # too heavy to run with: switching away with a hunter close by drops it (see Weapons.HEAVY_DROP_RANGE)
 		"scope_sway": 0.5,        # degrees of drift of the scoped view (see Weapons._update_sway); Shift / Ctrl holds the breath

@@ -19,10 +19,14 @@ var state := {}               # {current id: the ACTIVE weapon instance {"id", "
 var current := "pistol"       # id of the weapon in hand
 
 # Loadout: two weapons per slot at most. Each weapon instance owns its rounds and its (finite) spare magazines.
-const MAX_PER_SLOT := 2
+const MAX_PER_SLOT := {"pistol": 1, "rifle": 2, "melee": 1}
 const MAX_SPARE_MAGS := 6
 const PICKUP_RANGE := 2.0      # stand this close (horizontally) to a lying weapon to take it with Q
 const AMMO_RANGE := 1.8        # loose magazines are collected automatically inside this range
+const SLOT_FLASH_TIME := 2.2   # seconds the HUD's slot picker stays up after a number key
+const RELOAD_MAG_LEAD := 0.45      # the mag comes out this long before a recorded reload starts (if there is time for it)
+const RELOAD_BEAT_TIME := 0.13    # how long the gun's jolt on a reload click lasts
+const RELOAD_BEAT_DROP := 0.02     # ...and how far it drops (m)
 var loadout := {"pistol": [], "rifle": [], "melee": []}
 var active_slot := "pistol"
 var active_idx := 0
@@ -30,6 +34,8 @@ var last_idx := {"pistol": 0, "rifle": 0, "melee": 0}
 var hover: Pickup = null      # the weapon lying under the player's feet (HUD shows it)
 var notice := ""              # short toast for the HUD ("+1 MAG ...")
 var notice_t := 0.0
+var slot_flash := ""           # the slot whose key was just pressed: the HUD shows its weapons for a moment
+var slot_flash_t := 0.0
 var melee_t := 0.0            # swing animation time left
 var _melee_hit_pending := false
 var _stroke := 0              # index into STROKES of the swing in progress
@@ -57,6 +63,7 @@ var cooldown := 0.0
 var reloading := false
 var reload_t := 0.0
 var _reload_sound_stage := 0
+var _reload_player: AudioStreamPlayer      # the recorded reload while it plays
 var switching := 0.0
 var pending_slot := ""
 var pending_idx := 0
@@ -100,6 +107,7 @@ func setup(p: Player, cam: Camera3D) -> void:
 	hum.stream = Sfx.get_sound("hum")
 	hum.volume_db = -27.0
 	add_child(hum)
+	Sfx.load_files()
 	# the throwing arm (a sleeve and the grenade in the hand), only shown while winding up / throwing
 	throw_arm = Node3D.new()
 	var sleeve := MeshInstance3D.new()
@@ -487,15 +495,9 @@ func _equip(slot: String, idx: int) -> void:
 func _physics_process(delta: float) -> void:
 	if Game.dead:
 		return
-	cooldown = maxf(0.0, cooldown - delta)
+	cooldown = maxf(-delta, cooldown - delta)          # may dip just below 0: the next shot keeps the remainder, so the fire rate does not round down to whole ticks
 	empty_click_cd = maxf(0.0, empty_click_cd - delta)
 	bloom = move_toward(bloom, 0.0, delta * 6.0)
-
-	# ADS
-	var want_ads := HoldInput.held("aim") and can_aim() and not player.climbing
-	var rate := 1.0 / maxf(0.05, float(stats()["ads_time"]))
-	ads_k = move_toward(ads_k, 1.0 if want_ads else 0.0, rate * delta)
-	_update_sway(delta)
 
 	# weapon switching
 	if switching > 0.0:
@@ -513,24 +515,29 @@ func _physics_process(delta: float) -> void:
 			_slot_key("rifle")
 		elif Input.is_action_just_pressed("slot_3"):
 			_slot_key("melee")
-		elif Input.is_action_just_pressed("cycle_weapon") or Input.is_action_just_pressed("wheel_down"):
-			_cycle(1)
-		elif Input.is_action_just_pressed("wheel_up"):
-			_cycle(-1)
 
 	_update_pickups()
 	notice_t = maxf(0.0, notice_t - delta)
+	slot_flash_t = maxf(0.0, slot_flash_t - delta)
 	_grenade_input(delta)
 
 	# reload
+	if not reloading and _reload_player != null:          # cancelled (a switch, a checkpoint): the recording stops with it
+		if is_instance_valid(_reload_player):
+			_reload_player.queue_free()
+		_reload_player = null
 	if reloading:
 		reload_t += delta
 		var total := reload_total()
 		var k := reload_t / total
-		if _reload_sound_stage == 0 and k > 0.25:
+		var clip := String(stats().get("reload_sound", ""))
+		if clip != "" and _reload_sound_stage < 2 and reload_t >= _reload_clip_start():
+			_reload_sound_stage = 2
+			_reload_player = Sfx.play(self, clip, -4.0)
+		elif _reload_sound_stage == 0 and (k > 0.25 if clip == "" else reload_t >= _reload_clip_start() - RELOAD_MAG_LEAD and _reload_clip_start() > RELOAD_MAG_LEAD):
 			_reload_sound_stage = 1
 			Sfx.play(self, "mag_out", -8.0)
-		elif _reload_sound_stage == 1 and k > 0.62:
+		elif _reload_sound_stage == 1 and clip == "" and k > 0.62:
 			_reload_sound_stage = 2
 			Sfx.play(self, "mag_in", -6.0)
 		if reload_t >= total:
@@ -676,24 +683,17 @@ func _slot_key(slot: String) -> void:
 			_start_switch(slot, 1 - active_idx)
 	else:
 		_start_switch(slot, mini(int(last_idx[slot]), arr.size() - 1))
+	slot_flash = slot
+	slot_flash_t = SLOT_FLASH_TIME
 
 
-func _cycle(dir: int) -> void:
-	var list := carried().filter(func(e): return not slot_locked(e[0]))
-	if list.size() < 2:
-		return
-	return _cycle_in(list, dir)
-
-
-func _cycle_in(list: Array, dir: int) -> void:
-	if list.size() < 2:
-		return
-	var at := 0
-	for i in list.size():
-		if list[i][0] == active_slot and list[i][1] == active_idx:
-			at = i
-	var nxt: Array = list[posmod(at + dir, list.size())]
-	_start_switch(nxt[0], nxt[1])
+## The weapon of a slot the player has chosen, counting a switch still under way (the HUD's slot picker shows this one lit).
+func slot_choice(slot: String) -> int:
+	if pending_slot == slot:
+		return pending_idx
+	if active_slot == slot:
+		return active_idx
+	return mini(int(last_idx[slot]), (loadout[slot] as Array).size() - 1)
 
 
 # ---------------------------------------------------------------- grenades
@@ -1017,7 +1017,7 @@ func _take_ammo(pk: Pickup) -> bool:
 	return true
 
 
-## Take a lying weapon. Free slot: it goes in. Full slot (2): it replaces the one in hand (or last used) and that one is dropped.
+## Take a lying weapon. Free slot: it goes in. Full slot: it replaces the one in hand (or last used) and that one is dropped.
 func pick_up(pk: Pickup) -> void:
 	if switching > 0.0 or Game.dead:
 		return
@@ -1028,7 +1028,7 @@ func pick_up(pk: Pickup) -> void:
 		return
 	var arr: Array = loadout[slot]
 	var idx := 0
-	if arr.size() < MAX_PER_SLOT:
+	if arr.size() < int(MAX_PER_SLOT[slot]):
 		arr.append(inst)
 		idx = arr.size() - 1
 	else:
@@ -1073,9 +1073,16 @@ func start_reload() -> void:
 	ads_k = 0.0
 
 
+## When the weapon's recorded reload starts (seconds into the reload), so that it ends with the reload, however long a wound makes that.
+func _reload_clip_start() -> float:
+	var clip := String(stats().get("reload_sound", ""))
+	return maxf(0.0, reload_total() - Sfx.stream(clip).get_length()) if clip != "" else 0.0
+
+
 func _finish_reload() -> void:
 	reloading = false
 	reload_t = 0.0
+	_reload_player = null         # it ends by itself
 	var st: Dictionary = state[current]
 	var spare: Array = st["spare"]
 	var best := -1
@@ -1102,7 +1109,7 @@ func _fire_shot() -> void:
 	var s := stats()
 	var st: Dictionary = state[current]
 	st["ammo"] = int(st["ammo"]) - 1
-	cooldown = 60.0 / float(s["rpm"])
+	cooldown = minf(cooldown, 0.0) + 60.0 / float(s["rpm"])
 	Game.shots_fired += 1
 	Game.mark("shot")
 
@@ -1280,6 +1287,7 @@ func _eject_casing() -> void:
 	rb.collision_layer = 0
 	rb.collision_mask = Game.L_WORLD
 	rb.continuous_cd = true
+	rb.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	rb.mass = 0.02
 	var pm := PhysicsMaterial.new()
 	pm.bounce = 0.35
@@ -1334,6 +1342,13 @@ func _process(delta: float) -> void:
 			flash_node.visible = false
 			flash_light.visible = false
 
+	# ADS and the scope's drift run on the render frame: they move the camera's FOV and view (Player._process)
+	if not Game.dead:
+		var want_ads := HoldInput.held("aim") and can_aim() and not player.climbing
+		var rate := 1.0 / maxf(0.05, float(stats()["ads_time"]))
+		ads_k = move_toward(ads_k, 1.0 if want_ads else 0.0, rate * delta)
+		_update_sway(delta)
+
 	var s := stats()
 	kick = move_toward(kick, 0.0, delta * 0.5)
 	kick_pitch = lerpf(kick_pitch, 0.0, 1.0 - exp(-12.0 * delta))
@@ -1360,7 +1375,13 @@ func _process(delta: float) -> void:
 		var dip := sin(PI * k)
 		pos += Vector3(-0.04 * dip, -0.16 * dip, 0.03 * dip)
 		rot += Vector3(-0.55 * dip, 0.15 * dip, 0.5 * dip)
-	var snap := false               # the fast part of a stroke: the viewmodel follows its pose without smoothing
+		for beat in stats().get("reload_beats", []):        # the gun jolts on each click of the recorded reload
+			var since: float = reload_t - _reload_clip_start() - float(beat)
+			if since > 0.0 and since < RELOAD_BEAT_TIME:
+				var jolt := sin(PI * since / RELOAD_BEAT_TIME)
+				pos.y -= RELOAD_BEAT_DROP * jolt
+				rot.x -= RELOAD_BEAT_DROP * 3.0 * jolt
+	var snap := false              # the fast part of a stroke: the viewmodel follows its pose without smoothing
 	if is_melee() and melee_t <= 0.0 and takedown_t <= 0.0:
 		# at rest the blade breathes a little in the hand
 		var tt := Time.get_ticks_msec() * 0.001
