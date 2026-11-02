@@ -40,6 +40,7 @@ func build() -> void:
 	_decor()
 	_obstacles()
 	fires = WorldWar.build(self)
+	Oaks.build(self)
 	_lights()
 	_sites()
 	_goal_marker()

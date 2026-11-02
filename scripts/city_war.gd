@@ -7,6 +7,7 @@ class_name CityWar
 const KEEP_CLEAR := [Rect2(-3.5, -City.IN_Z, 7.0, City.IN_Z * 2.0), Rect2(-City.IN_X, -3.5, City.IN_X * 2.0, 7.0)]
 static var extra_clear: Array = []     # more rectangles the generators keep free (the lookout's fire escape: CityPlaces._old_block); reset by CityStory.reset()
 const TREE_SPACING := [10.0, 14.0]
+const FALLEN_FLAT := 0.55        # a felled crown is squashed to this fraction of its width where it lies on the road
 const CONCRETE := Color(0.6, 0.6, 0.58)
 const STEEL := Color(0.22, 0.23, 0.25)
 const RUST := Color(0.42, 0.22, 0.12)
@@ -204,13 +205,9 @@ static func _tree_visual(tree: Dictionary, rng: RandomNumberGenerator) -> void:
 			Scn.part("fire", Transform3D(Basis.from_scale(Vector3(h * 0.5, h * 0.42, h * 0.5)), base + Vector3(0, h * 0.62, 0)), Color(ph, 0, 0))
 			Scn.part("fire", Transform3D(Basis.from_scale(Vector3(h * 0.32, h * 0.3, h * 0.32)), base + Vector3(h * 0.1, h * 0.88, h * 0.04)), Color(fposmod(ph + 0.37, 1.0), 0, 0))
 		_:
-			Scn.between("cyl", base, base + Vector3(0, h * 0.5, 0), 0.5 * float(tree["k"]), trunk_col)
-			if tree["conifer"]:
-				Scn.part("cone", Transform3D(Basis.from_scale(Vector3(h * 0.4, h * 0.55, h * 0.4)), base + Vector3(0, h * 0.42, 0)), crown.darkened(0.15))
-				Scn.part("cone", Transform3D(Basis.from_scale(Vector3(h * 0.3, h * 0.42, h * 0.3)), base + Vector3(0, h * 0.78, 0)), crown)
-			else:
-				Scn.part("sphere", Transform3D(Basis.from_scale(Vector3(h * 0.54, h * 0.44, h * 0.54)), base + Vector3(0, h * 0.62, 0)), crown)
-				Scn.part("sphere", Transform3D(Basis.from_scale(Vector3(h * 0.34, h * 0.3, h * 0.34)), base + Vector3(h * 0.1, h * 0.88, h * 0.05)), crown.lightened(0.08))
+			# the oak model (Oaks): sunk a little into the planter soil so the root flare sits in it
+			var pk := Oaks.pick(p)
+			Scn.oaks.append([Oaks.xf_for(base - Vector3(0, 0.05, 0), h, pk[2]), pk[0], pk[1]])
 
 
 ## The fallen trunk and its crown: a collider the player must jump (lying on the ground) or crouch under (propped up on its stump).
@@ -232,7 +229,18 @@ static func _fell(tree: Dictionary, rng: RandomNumberGenerator) -> void:
 	Scn.solid_xf(Transform3D(Basis(xax, yax, dir3), (a + b) * 0.5), Vector3(0.8, 0.8, len3))
 	# the crown lies on the ground at the far end
 	var crown := Vector3(p.x + d.x * (length + 1.4), 0.7, p.y + d.y * (length + 1.4))
-	Scn.part("sphere", Transform3D(Basis.from_scale(Vector3(3.0, 1.5, 3.0)), crown), tree["crown"])
+	# the oak's light mesh lying from the top of the stump down to the crown point: its crown centre (6.5 m up the 10 m model) rests
+	# on the road, squashed to FALLEN_FLAT where it hit the ground
+	var pk := Oaks.pick(p)
+	var top := a
+	var ccen := Vector3(crown.x + d.x * 1.5, 0.0, crown.z + d.y * 1.5)
+	var s := (ccen - top).length() / 6.5
+	ccen.y = 6.0 * s * FALLEN_FLAT * 0.85
+	s = (ccen - top).length() / 6.5
+	var fwd := (ccen - top).normalized()
+	var side_ax := Vector3.UP.cross(fwd).normalized()
+	var zax := side_ax.cross(fwd).normalized()
+	Scn.oak_crowns.append([Transform3D(Basis(side_ax * s, fwd * s, zax * s * FALLEN_FLAT), top), pk[0], (pk[1] as Color).darkened(0.12)])
 	Scn.solid(Vector3(crown.x, 0.5, crown.z), Vector3(2.4, 1.0, 2.4))
 	# the navigation grid blocks the trunk's swept bounds and the crown
 	var tb := Rect2(Vector2(minf(a.x, b.x), minf(a.z, b.z)), Vector2(absf(b.x - a.x), absf(b.z - a.z))).grow(0.5)

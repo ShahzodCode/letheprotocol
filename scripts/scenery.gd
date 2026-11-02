@@ -17,6 +17,8 @@ static var kerbs: Array = []            # Rect2: raised pavement edges (only the
 static var blocks: Array = []           # {rect: Rect2, margin: float}
 static var fires: Array = []            # {kind: String, pos: Vector3, s: float}
 static var lamps: Array = []            # Vector3: standing street lamps (decor + thin collider)
+static var oaks: Array = []             # [Transform3D, variant, tint Color]: standing trees, drawn by Oaks
+static var oak_crowns: Array = []       # [Transform3D, variant, tint Color]: the crowns of felled trees (light mesh only)
 
 
 static func reset() -> void:
@@ -30,6 +32,8 @@ static func reset() -> void:
 	blocks = []
 	fires = []
 	lamps = []
+	oaks = []
+	oak_crowns = []
 
 
 ## A rotated (yaw) box of `size` centred at `c`; `extra` is an additional local rotation (tilt) applied before the yaw.
