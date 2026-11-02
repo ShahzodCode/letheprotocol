@@ -150,14 +150,15 @@ func _setup() -> void:
 
 
 func _apply_mats(inst: MultiMeshInstance3D, mesh: Mesh, bark_mat: Material, leaf_mat: Material) -> void:
-	# a MultiMeshInstance3D has no per-surface override: the materials go on the mesh surfaces (the mesh is our own copy)
+	# a MultiMeshInstance3D has no per-surface override: the materials go on the mesh surfaces (the mesh is our own copy).
+	# The glb comes without material names (exported as placeholders): Blender's order holds, surface 0 bark, surface 1 leaves.
 	for s in mesh.get_surface_count():
 		var nm := String((mesh as ArrayMesh).surface_get_name(s)) if mesh is ArrayMesh else ""
 		var mat_name := ""
 		var m := mesh.surface_get_material(s)
 		if m != null:
 			mat_name = m.resource_name
-		var is_leaf := mat_name.begins_with("leaves") or nm.begins_with("leaves")
+		var is_leaf := mat_name.begins_with("leaves") or nm.begins_with("leaves") or (mat_name == "" and nm == "" and s == 1)
 		mesh.surface_set_material(s, leaf_mat if is_leaf else bark_mat)
 
 
