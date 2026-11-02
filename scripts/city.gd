@@ -200,6 +200,7 @@ static func generate(seed_value: int = 2077) -> void:
 	CityLinks.link(seed_value)                  # cut-throughs and aligned crossings so the back streets form a network (own random stream)
 	_make_backdrop(rng)
 	CityModels.place()                          # the model buildings take their lots and stretches of the ring (no randomness)
+	CityGreen.plan(seed_value)                  # some lot buildings pull back into gardens, terraces and roof planting (own random stream)
 	_pick_sites(rng)
 	_make_obstacles(seed_value)
 	# LETHE_PLAIN=1 (environment) skips everything the war-torn city added: a baseline for frame-time comparisons

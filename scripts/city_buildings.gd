@@ -8,6 +8,7 @@ class_name CityBuildings
 ##   building["arch"]    String      building["chunk"]    {rect, y0, y1} the missing corner volume (if any)
 ##   building["access"]  a flat roof the player may reach (stage 3 gives it a parapet, a ladder or a fire escape)
 
+const GREEN_MAX_DAMAGE := 0.35   # CityGreen buildings: never heavier than light damage
 const STONE := [Color(0.86, 0.84, 0.78), Color(0.93, 0.92, 0.9), Color(0.66, 0.64, 0.6), Color(0.84, 0.72, 0.5), Color(0.78, 0.75, 0.68)]
 const BRICKS := [Color(0.58, 0.4, 0.32), Color(0.62, 0.48, 0.38)]
 const AWNINGS := [Color(0.72, 0.14, 0.12), Color(0.14, 0.34, 0.6), Color(0.86, 0.7, 0.2), Color(0.2, 0.5, 0.3), Color(0.9, 0.9, 0.85)]
@@ -112,6 +113,10 @@ static func dress(seed_value: int) -> void:
 			(border if b.get("border", false) else inner).append(b)
 	_assign_damage(inner, rng, 0.2, 0.4)
 	_assign_damage(border, rng, 0.34, 0.4)
+	for b in inner:
+		if b.get("green", false):        # the green buildings (CityGreen) stay at most lightly damaged, so their planting reads
+			b["damage"] = minf(float(b["damage"]), GREEN_MAX_DAMAGE)
+			b["burning"] = false
 	for b in special:
 		b["damage"] = rng.randf_range(0.0, 0.5)
 	for b in special:
