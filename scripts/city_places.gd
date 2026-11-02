@@ -180,50 +180,180 @@ static func _home() -> void:
 		City.ground_slabs.append([piece, Color(0.55, 0.4, 0.27), 2])
 	City.ground_slabs.append([Rect2(o, Vector2(6.0, 3.4)), Color(0.78, 0.74, 0.66), 3])                 # kitchen tiles
 	City.ground_slabs.append([Rect2(o.x, o.y + 6.6, 3.0, 3.4), Color(0.7, 0.78, 0.8), 3])               # bathroom tiles
-	City.ground_slabs.append([Rect2(o.x, o.y + 10.0, 14.0, iv - 10.0), Color(0.5, 0.5, 0.48), 3])       # the back hall's concrete
+	City.ground_slabs.append([Rect2(o.x, o.y + 10.0, 10.4, iv - 10.0), Color(0.5, 0.5, 0.48), 3])       # laundry and mudroom: concrete
+	City.ground_slabs.append([Rect2(o.x + 10.4, o.y + 10.0, iw - 10.4, iv - 10.0), Color(0.42, 0.42, 0.4), 3])   # the workshop
 	City.ground_slabs.append([Rect2(back_a, o.y + iv, back_b - back_a, 0.4), Color(0.5, 0.5, 0.48), 3])  # the back door's sill
-	# partition walls (0.2 m thick, doorways 1.2 m wide, doors 2.2 m high). Rooms: kitchen, hallway, living room, bathroom, the cellar stairs,
-	# the parents' bedroom (the old flat); Mira's room and the study (the east wing, u 14..19.6) and the back hall (v 10..13.6). The doors make
-	# loops (hallway - bathroom - back hall - bedroom - living room, and living room - Mira's room - study - back hall) so a fight can move round.
-	var walls: Array = []
-	walls.append_array(_wall(o.y + 3.4, o.x, o.x + 6.0, 0.2, true, [[o.x + 2.0, o.x + 3.2]], ah, 2.2))                                   # kitchen | hallway
-	walls.append_array(_wall(o.x + 6.0, o.y, o.y + 6.6, 0.2, false, [[o.y + 4.5, o.y + 5.7]], ah, 2.2))                                  # kitchen + hallway | living room
-	walls.append_array(_wall(o.y + 6.6, o.x, o.x + 14.0, 0.2, true, [[o.x + 0.9, o.x + 2.1], [o.x + 3.2, o.x + 4.4], [o.x + 9.0, o.x + 10.2]], ah, 2.2))   # bathroom, stairs, bedroom
-	walls.append_array(_wall(o.x + 3.0, o.y + 6.6, o.y + 10.0, 0.2, false, [], ah, 2.2))
-	walls.append_array(_wall(o.x + 4.6, o.y + 6.6, o.y + 10.0, 0.2, false, [], ah, 2.2))
-	walls.append_array(_wall(o.y + 10.0, o.x, o.x + 14.0, 0.2, true, [[o.x + 1.6, o.x + 2.8], [o.x + 6.0, o.x + 7.2]], ah, 2.2))          # bathroom, bedroom | back hall
-	walls.append_array(_wall(o.x + 14.0, o.y, o.y + iv, 0.2, false, [[o.y + 2.4, o.y + 3.6], [o.y + 6.8, o.y + 8.0], [o.y + 11.2, o.y + 12.4]], ah, 2.2))   # the east wing
-	walls.append_array(_wall(o.y + 6.6, o.x + 14.0, o.x + iw, 0.2, true, [[o.x + 16.5, o.x + 17.7]], ah, 2.2))                          # Mira's room | study
-	for w in walls:
-		_prop(w["rect"], w["y0"], w["y1"], PARTITION, "home")
-	# furniture: the kitchen counter (cover!), sofa, table, bed, bathtub (along the bathroom's west wall, clear of the back hall door)
-	_prop(Rect2(o.x + 0.4, o.y + 0.15, 4.2, 0.7), 0.0, 1.0, Color(0.5, 0.5, 0.52), "home")
-	_prop(Rect2(o.x + 0.15, o.y + 0.85, 0.7, 2.0), 0.0, 1.0, Color(0.5, 0.5, 0.52), "home")
-	_prop(Rect2(o.x + 8.0, o.y + 0.3, 3.2, 0.9), 0.0, 0.8, Color(0.3, 0.38, 0.5), "home")
-	_prop(Rect2(o.x + 9.0, o.y + 3.0, 1.6, 1.0), 0.0, 0.55, Color(0.45, 0.32, 0.2), "home")
-	_prop(Rect2(o.x + 11.0, o.y + 8.0, 2.4, 1.85), 0.0, 0.6, Color(0.7, 0.35, 0.35), "home")
-	_prop(Rect2(o.x + 0.15, o.y + 7.2, 0.7, 2.2), 0.0, 0.6, Color(0.9, 0.92, 0.94), "home")
-	# Mira's room: her bed, a wardrobe, a toy chest
-	_prop(Rect2(o.x + 17.6, o.y + 0.3, 1.8, 1.0), 0.0, 0.5, Color(0.85, 0.55, 0.7), "home")
-	_prop(Rect2(o.x + 18.8, o.y + 3.6, 0.65, 2.0), 0.0, 2.0, Color(0.62, 0.48, 0.34), "home")
-	_prop(Rect2(o.x + 15.2, o.y + 0.25, 1.0, 0.6), 0.0, 0.6, Color(0.35, 0.55, 0.75), "home")
-	# the study (the father's): a desk, a bookshelf, a filing cabinet
-	_prop(Rect2(o.x + 18.0, o.y + 7.0, 1.4, 0.8), 0.0, 0.78, Color(0.45, 0.3, 0.2), "home")
-	_prop(Rect2(o.x + 19.0, o.y + 9.0, 0.45, 3.6), 0.0, 2.0, Color(0.4, 0.28, 0.18), "home")
-	_prop(Rect2(o.x + 15.0, o.y + 12.6, 1.4, 0.8), 0.0, 1.1, Color(0.45, 0.47, 0.5), "home")
-	# the back hall: a washing machine, a shelf of tins, stacked crates (cover in the middle of the long room)
-	_prop(Rect2(o.x + 0.2, o.y + 12.6, 0.8, 0.8), 0.0, 0.9, Color(0.88, 0.88, 0.9), "home")
-	_prop(Rect2(o.x + 3.4, o.y + 13.05, 3.4, 0.4), 0.0, 1.8, Color(0.5, 0.42, 0.32), "home")
-	_prop(Rect2(o.x + 10.4, o.y + 11.2, 1.2, 1.0), 0.0, 1.0, Color(0.55, 0.45, 0.3), "home")
-	_prop(Rect2(o.x + 4.0, o.y + 10.9, 0.9, 0.9), 0.0, 0.9, Color(0.55, 0.45, 0.3), "home")
+	_home_walls(o, iw, iv, ah)
+	_home_furniture(o)
 	_breakfast(o)
 	City.lights.append({"pos": Vector3(o.x + 7.0, 2.6, o.y + 5.0), "range": 14.0, "energy": 1.3, "color": Color(1.0, 0.92, 0.75)})
-	City.lights.append({"pos": Vector3(o.x + 16.8, 2.6, o.y + 6.6), "range": 10.0, "energy": 1.0, "color": Color(1.0, 0.92, 0.75)})
-	City.lights.append({"pos": Vector3(o.x + 8.0, 2.6, o.y + 11.8), "range": 10.0, "energy": 0.8, "color": Color(1.0, 0.9, 0.7)})
+	City.lights.append({"pos": Vector3(o.x + 16.8, 2.6, o.y + 5.0), "range": 9.0, "energy": 0.9, "color": Color(1.0, 0.92, 0.75)})
+	City.lights.append({"pos": Vector3(o.x + 5.0, 2.6, o.y + 11.8), "range": 9.0, "energy": 0.7, "color": Color(1.0, 0.9, 0.7)})
+	City.lights.append({"pos": Vector3(o.x + 15.0, 2.6, o.y + 11.0), "range": 9.0, "energy": 0.7, "color": Color(0.95, 0.95, 1.0)})
 	# warm lights on the street side so the house reads from the avenue
 	_decor(Vector3(hr.position.x - 0.05, 2.55, o.y + 5.0), Vector3(0.15, 0.25, 1.8), Color(1.0, 0.8, 0.4), true)
 	for wz in [o.y + 1.8, o.y + 8.4]:
 		_decor(Vector3(hr.position.x - 0.03, 1.5, wz), Vector3(0.08, 1.2, 1.8), Color(1.0, 0.85, 0.5), true)
+
+
+## Partition walls (0.2 m thick, doorways 1.2 m wide, doors 2.2 m high). There is no corridor through the flat: rooms open into rooms.
+##   north row (v 0..6.6): kitchen (u 0..6, v 0..3.4) off the hallway only; the hallway (v 3.4..6.6) with the front door; the living room
+##     (u 6..14); Mira's room (u 14..19.6), reached only through the living room.
+##   middle row (v 6.6..10): bathroom (u 0..3) from the hallway; the cellar stairs (u 3..4.6) from the hallway; the parents' bedroom
+##     (u 4.6..14) from the living room and the study; the study (u 14..19.6) from the bedroom and the workshop.
+##   back row (v 10..13.6): the laundry (u 0..6) through the bathroom; the mudroom (u 6..10.4) with the back door; the workshop (u 10.4..19.6).
+## One loop runs round the whole flat (hallway - bathroom - laundry - mudroom - workshop - study - bedroom - living room - hallway), so a
+## fight can move round it, and both outside doors lead into it from opposite corners.
+static func _home_walls(o: Vector2, iw: float, iv: float, ah: float) -> void:
+	var walls: Array = []
+	walls.append_array(_wall(o.y + 3.4, o.x, o.x + 6.0, 0.2, true, [[o.x + 2.0, o.x + 3.2]], ah, 2.2))                                    # kitchen | hallway
+	walls.append_array(_wall(o.x + 6.0, o.y, o.y + 6.6, 0.2, false, [[o.y + 4.5, o.y + 5.7]], ah, 2.2))                                   # hallway | living room
+	walls.append_array(_wall(o.y + 6.6, o.x, o.x + 14.0, 0.2, true, [[o.x + 0.9, o.x + 2.1], [o.x + 3.2, o.x + 4.4], [o.x + 9.0, o.x + 10.2]], ah, 2.2))   # bathroom, stairs, bedroom
+	walls.append_array(_wall(o.x + 3.0, o.y + 6.6, o.y + 10.0, 0.2, false, [], ah, 2.2))
+	walls.append_array(_wall(o.x + 4.6, o.y + 6.6, o.y + 10.0, 0.2, false, [], ah, 2.2))
+	walls.append_array(_wall(o.y + 10.0, o.x, o.x + iw, 0.2, true, [[o.x + 1.6, o.x + 2.8], [o.x + 16.0, o.x + 17.2]], ah, 2.2))         # bathroom | laundry, study | workshop
+	walls.append_array(_wall(o.x + 6.0, o.y + 10.0, o.y + iv, 0.2, false, [[o.y + 11.2, o.y + 12.4]], ah, 2.2))                          # laundry | mudroom
+	walls.append_array(_wall(o.x + 10.4, o.y + 10.0, o.y + iv, 0.2, false, [[o.y + 11.4, o.y + 12.6]], ah, 2.2))                         # mudroom | workshop
+	walls.append_array(_wall(o.x + 14.0, o.y, o.y + 10.0, 0.2, false, [[o.y + 2.4, o.y + 3.6], [o.y + 6.8, o.y + 8.0]], ah, 2.2))        # living | Mira, bedroom | study
+	walls.append_array(_wall(o.y + 6.6, o.x + 14.0, o.x + iw, 0.2, true, [], ah, 2.2))                                                   # Mira's room | study
+	for w in walls:
+		_prop(w["rect"], w["y0"], w["y1"], PARTITION, "home")
+
+
+## Solid furniture (props: colliders, block the home nav grid) at (u, v, du, dv, height) from the flat's corner.
+static func _hp(o: Vector2, u: float, v: float, du: float, dv: float, h: float, col: Color) -> void:
+	_prop(Rect2(o.x + u, o.y + v, du, dv), 0.0, h, col, "home")
+
+
+## Small things (decor: no collider) at the flat's (u, y, v) with size (su, sy, sv).
+static func _hd(o: Vector2, u: float, y: float, v: float, su: float, sy: float, sv: float, col: Color, glow: bool = false) -> void:
+	_decor(Vector3(o.x + u, y, o.y + v), Vector3(su, sy, sv), col, glow)
+
+
+static func _home_furniture(o: Vector2) -> void:
+	var steel := Color(0.5, 0.5, 0.52)
+	var white := Color(0.9, 0.9, 0.88)
+	var oak := Color(0.55, 0.4, 0.26)
+	var walnut := Color(0.4, 0.28, 0.18)
+	var fabric := Color(0.3, 0.38, 0.5)
+	var book_cols := [Color(0.6, 0.2, 0.18), Color(0.2, 0.35, 0.55), Color(0.75, 0.65, 0.4), Color(0.25, 0.45, 0.3), Color(0.85, 0.82, 0.75)]
+	# ---- kitchen: the L counter (cover), fridge, stove, wall cupboards, a window shelf of herbs
+	_hp(o, 0.4, 0.15, 4.2, 0.7, 1.0, steel)
+	_hp(o, 0.15, 0.85, 0.7, 2.0, 1.0, steel)
+	_hp(o, 5.15, 0.15, 0.75, 0.75, 1.9, white)                                       # fridge
+	_hd(o, 5.52, 1.2, 0.92, 0.04, 0.5, 0.05, Color(0.7, 0.7, 0.72))                  # its handle
+	_hd(o, 3.2, 1.01, 0.5, 0.6, 0.02, 0.5, Color(0.12, 0.12, 0.13))                  # the hob
+	for k in 4:
+		_hd(o, 3.05 + 0.3 * (k % 2), 1.025, 0.37 + 0.26 * (k / 2), 0.18, 0.01, 0.18, Color(0.25, 0.25, 0.27))
+	_hd(o, 2.4, 1.9, 0.33, 4.0, 0.7, 0.36, Color(0.82, 0.8, 0.74))                   # wall cupboards over the counter
+	_hd(o, 0.33, 1.9, 1.85, 0.36, 0.7, 1.9, Color(0.82, 0.8, 0.74))
+	for k in 3:
+		_hd(o, 1.6 + 0.35 * k, 1.12, 0.3, 0.14, 0.2, 0.14, Color(0.7, 0.4, 0.25))      # herb pots ...
+		_hd(o, 1.6 + 0.35 * k, 1.3, 0.3, 0.2, 0.18, 0.2, Color(0.25, 0.55, 0.22))     # ... and their herbs
+	# ---- hallway: shoe bench under the coat hooks, a tall mirror, a runner rug, the hall cabinet (HomeScene moves it in the end)
+	_hp(o, 0.15, 5.75, 0.45, 0.75, 0.45, oak)
+	_hd(o, 0.08, 1.75, 6.1, 0.06, 0.06, 0.8, walnut)                                 # coat hook rail
+	for k in 3:
+		_hd(o, 0.16, 1.45, 5.85 + 0.25 * k, 0.16, 0.6, 0.2, [Color(0.25, 0.3, 0.2), Color(0.55, 0.3, 0.2), Color(0.2, 0.22, 0.3)][k])
+	_hd(o, 5.88, 1.3, 4.0, 0.04, 1.4, 0.6, Color(0.75, 0.82, 0.85))                  # mirror on the living-room wall
+	_hd(o, 3.0, 0.09, 5.0, 4.6, 0.012, 1.1, Color(0.55, 0.22, 0.2))                  # runner rug
+	# ---- living room: sofa, coffee table, armchair, TV unit, bookcase, rug, floor lamp, plants
+	_hp(o, 8.0, 0.3, 3.2, 0.9, 0.8, fabric)
+	_hd(o, 9.6, 0.95, 0.42, 3.2, 0.45, 0.2, fabric.darkened(0.15))                   # its back cushions
+	_hp(o, 9.0, 3.0, 1.6, 1.0, 0.45, walnut)
+	_hd(o, 9.5, 0.47, 3.4, 0.3, 0.04, 0.22, Color(0.85, 0.82, 0.7))                  # a newspaper on it
+	_hp(o, 12.4, 1.4, 0.95, 0.95, 0.75, Color(0.55, 0.45, 0.35))                     # armchair
+	_hp(o, 11.0, 6.05, 2.6, 0.4, 0.5, walnut)                                        # TV unit against the bedroom wall
+	_hd(o, 12.3, 0.95, 6.3, 1.3, 0.75, 0.05, Color(0.05, 0.05, 0.06))                # the TV
+	_hp(o, 13.5, 4.0, 0.4, 1.9, 2.0, walnut)                                         # bookcase
+	for sh in 4:
+		for k in 5:
+			_hd(o, 13.62, 0.35 + 0.48 * sh, 4.2 + 0.33 * k, 0.22, 0.3, 0.26, book_cols[(sh * 2 + k) % book_cols.size()])
+	_hd(o, 9.8, 0.09, 2.9, 3.4, 0.012, 2.6, Color(0.7, 0.62, 0.48))                  # the rug
+	_hd(o, 7.3, 0.8, 0.6, 0.06, 1.6, 0.06, Color(0.2, 0.2, 0.2))                     # floor lamp
+	_hd(o, 7.3, 1.65, 0.6, 0.4, 0.3, 0.4, Color(1.0, 0.9, 0.7), true)
+	_hp(o, 6.3, 5.9, 0.5, 0.5, 0.4, Color(0.6, 0.38, 0.25))                          # a big pot ...
+	_hd(o, 6.55, 0.85, 6.15, 0.7, 0.9, 0.7, Color(0.22, 0.45, 0.2))                  # ... with a fig tree
+	# ---- bathroom: bath, basin, toilet, mirror, towels
+	_hp(o, 0.15, 7.2, 0.7, 2.2, 0.6, white)
+	_hp(o, 2.35, 6.9, 0.5, 0.6, 0.85, white)                                         # basin
+	_hd(o, 2.86, 1.45, 7.2, 0.04, 0.6, 0.5, Color(0.75, 0.82, 0.85))                 # mirror
+	_hp(o, 2.35, 8.1, 0.5, 0.65, 0.45, white)                                        # toilet
+	_hd(o, 2.75, 0.75, 8.2, 0.2, 0.5, 0.45, white)                                   # its cistern
+	_hd(o, 0.5, 1.2, 9.85, 0.6, 0.5, 0.04, Color(0.4, 0.6, 0.75))                    # towel
+	# ---- parents' bedroom: the bed (BED_TOP), two bedside tables, a wardrobe, a dresser, a rug
+	_hp(o, 11.0, 8.0, 2.4, 1.85, 0.6, Color(0.7, 0.35, 0.35))
+	_hd(o, 12.2, 0.75, 9.6, 2.3, 0.6, 0.12, walnut)                                  # headboard
+	_hd(o, 11.6, 0.65, 9.2, 0.6, 0.12, 0.4, white)                                   # pillows
+	_hd(o, 12.8, 0.65, 9.2, 0.6, 0.12, 0.4, white)
+	_hp(o, 10.5, 9.4, 0.45, 0.45, 0.55, walnut)                                      # bedside tables
+	_hp(o, 13.45, 9.4, 0.4, 0.45, 0.55, walnut)
+	_hd(o, 10.72, 0.75, 9.62, 0.2, 0.35, 0.2, Color(1.0, 0.9, 0.7), true)            # bedside lamp
+	_hp(o, 4.8, 7.0, 0.6, 2.4, 2.1, oak)                                             # wardrobe against the stairwell
+	_hp(o, 6.2, 9.45, 1.6, 0.45, 0.9, oak)                                           # dresser
+	_hd(o, 7.0, 1.6, 9.88, 0.9, 0.7, 0.03, Color(0.75, 0.82, 0.85))                  # its mirror
+	_hd(o, 8.3, 0.09, 8.3, 2.2, 0.012, 1.6, Color(0.45, 0.5, 0.6))                   # rug
+	# ---- Mira's room: bed, wardrobe, toy chest, a little desk and chair, rug, toys, her drawings on the wall
+	_hp(o, 17.6, 0.3, 1.8, 1.0, 0.5, Color(0.85, 0.55, 0.7))
+	_hd(o, 17.9, 0.56, 0.6, 0.45, 0.1, 0.35, white)                                  # pillow
+	_hd(o, 18.3, 0.62, 0.75, 0.18, 0.22, 0.14, Color(0.85, 0.8, 0.72))               # a soft toy (not the rabbit: that one is in the cellar)
+	_hp(o, 18.8, 3.6, 0.65, 2.0, 2.0, Color(0.62, 0.48, 0.34))
+	_hp(o, 15.2, 0.25, 1.0, 0.6, 0.6, Color(0.35, 0.55, 0.75))
+	_hp(o, 14.3, 5.4, 1.1, 0.6, 0.6, Color(0.95, 0.85, 0.5))                         # desk
+	_hd(o, 15.0, 0.3, 4.95, 0.35, 0.6, 0.35, Color(0.8, 0.3, 0.3))                   # chair
+	_hd(o, 16.6, 0.09, 3.0, 2.4, 0.012, 2.0, Color(0.6, 0.8, 0.7))                   # rug
+	for k in 5:
+		_hd(o, 16.0 + 0.55 * k, 0.15, 2.6 + 0.4 * (k % 2), 0.2, 0.2, 0.2, [Color(0.9, 0.3, 0.3), Color(0.3, 0.6, 0.9), Color(0.95, 0.8, 0.2), Color(0.4, 0.75, 0.4), Color(0.8, 0.5, 0.9)][k])   # toy blocks
+	for k in 3:
+		_hd(o, 16.0 + 0.8 * k, 1.5, 6.47, 0.5, 0.35, 0.02, Color(0.97, 0.96, 0.9))     # drawings pinned up
+		_hd(o, 16.0 + 0.8 * k, 1.5, 6.455, 0.3, 0.15, 0.01, [Color(0.3, 0.6, 0.3), Color(1.0, 0.8, 0.2), Color(0.3, 0.4, 0.8)][k])
+	# ---- the study (the father's): desk with a lamp, chair, a full bookcase, an armchair
+	_hp(o, 18.0, 7.0, 1.4, 0.8, 0.78, walnut)
+	_hd(o, 18.4, 0.82, 7.3, 0.5, 0.03, 0.35, Color(0.9, 0.88, 0.8))                   # papers
+	_hd(o, 19.1, 1.0, 7.2, 0.15, 0.4, 0.15, Color(1.0, 0.9, 0.7), true)              # desk lamp
+	_hd(o, 18.7, 0.3, 8.1, 0.45, 0.6, 0.45, Color(0.2, 0.2, 0.22))                   # desk chair
+	_hp(o, 19.05, 8.3, 0.4, 1.5, 2.0, walnut)                                        # bookcase
+	for sh in 4:
+		for k in 4:
+			_hd(o, 19.17, 0.35 + 0.48 * sh, 8.45 + 0.33 * k, 0.22, 0.3, 0.26, book_cols[(sh + k * 3) % book_cols.size()])
+	_hp(o, 14.5, 8.7, 0.9, 0.9, 0.75, Color(0.4, 0.3, 0.25))                         # armchair
+	# ---- laundry: washer, dryer, shelves of tins, a drying rack, a basket, crates (reached through the bathroom or the mudroom)
+	_hp(o, 0.2, 12.6, 0.8, 0.8, 0.9, Color(0.88, 0.88, 0.9))
+	_hp(o, 1.1, 12.6, 0.8, 0.8, 0.9, Color(0.86, 0.86, 0.88))
+	_hd(o, 0.6, 0.55, 12.58, 0.45, 0.45, 0.02, Color(0.2, 0.25, 0.3))                # the washer's round door
+	_hp(o, 3.2, 13.05, 2.4, 0.4, 1.8, Color(0.5, 0.42, 0.32))                        # shelf of tins
+	for sh in 3:
+		for k in 6:
+			_hd(o, 3.4 + 0.38 * k, 0.5 + 0.55 * sh, 13.2, 0.14, 0.18, 0.14, [Color(0.75, 0.2, 0.15), Color(0.85, 0.75, 0.3), Color(0.3, 0.5, 0.3)][(k + sh) % 3])
+	_hp(o, 4.0, 10.9, 0.9, 0.9, 0.9, Color(0.55, 0.45, 0.3))                         # crates
+	_hd(o, 2.4, 0.75, 11.6, 0.05, 1.5, 1.4, Color(0.75, 0.75, 0.78))                 # drying rack ...
+	_hd(o, 2.4, 1.2, 11.6, 0.1, 0.5, 1.2, Color(0.85, 0.82, 0.92))                   # ... with washing on it
+	_hd(o, 0.6, 0.2, 11.0, 0.5, 0.4, 0.4, Color(0.75, 0.65, 0.45))                   # laundry basket
+	# ---- mudroom: a bench, boots, coats, an umbrella stand, a shelf by the back door
+	_hp(o, 6.3, 13.0, 1.4, 0.45, 0.45, oak)
+	_hd(o, 7.0, 1.75, 13.5, 1.4, 0.06, 0.06, walnut)                                 # coat hooks
+	for k in 4:
+		_hd(o, 6.5 + 0.35 * k, 1.35, 13.42, 0.25, 0.75, 0.14, [Color(0.2, 0.3, 0.25), Color(0.5, 0.35, 0.2), Color(0.25, 0.25, 0.35), Color(0.6, 0.2, 0.2)][k])
+	for k in 3:
+		_hd(o, 6.5 + 0.4 * k, 0.15, 12.6, 0.14, 0.3, 0.3, Color(0.15, 0.13, 0.12))     # boots
+	_hp(o, 9.6, 10.25, 0.6, 0.45, 1.0, oak)                                          # shoe shelf
+	_hd(o, 10.0, 0.35, 13.3, 0.25, 0.7, 0.25, Color(0.3, 0.3, 0.32))                 # umbrella stand
+	# ---- the workshop: workbench with tools on the wall, a tool cabinet, a bicycle, crates and a paint shelf (cover in the middle)
+	_hp(o, 11.0, 12.75, 3.0, 0.7, 0.95, Color(0.5, 0.38, 0.25))
+	_hd(o, 12.5, 1.6, 13.5, 3.0, 1.0, 0.04, Color(0.62, 0.55, 0.42))                 # pegboard
+	for k in 6:
+		_hd(o, 11.3 + 0.48 * k, 1.6, 13.46, 0.08, 0.45, 0.04, [Color(0.6, 0.15, 0.1), Color(0.3, 0.3, 0.32), Color(0.85, 0.7, 0.2)][k % 3])   # tools
+	_hd(o, 12.0, 1.0, 13.0, 0.4, 0.12, 0.25, Color(0.2, 0.45, 0.7))                  # a vice / toolbox on the bench
+	_hp(o, 18.6, 12.4, 0.8, 1.0, 1.6, Color(0.45, 0.47, 0.5))                        # tool cabinet
+	_hp(o, 14.2, 10.4, 1.0, 0.8, 1.0, Color(0.55, 0.45, 0.3))                        # crate stack
+	_hd(o, 14.7, 1.3, 10.8, 0.7, 0.6, 0.7, Color(0.6, 0.5, 0.33))
+	_hp(o, 16.6, 13.05, 1.6, 0.4, 1.6, Color(0.4, 0.4, 0.42))                        # paint shelf
+	for k in 4:
+		_hd(o, 16.8 + 0.4 * k, 1.0, 13.2, 0.25, 0.3, 0.25, [Color(0.9, 0.9, 0.9), Color(0.2, 0.4, 0.7), Color(0.75, 0.25, 0.2), Color(0.3, 0.6, 0.35)][k])
+	for wx in [11.2, 12.4]:                                                           # the bicycle against the mudroom wall
+		_hd(o, wx, 0.35, 10.45, 0.6, 0.6, 0.04, Color(0.12, 0.12, 0.12))
+	_hd(o, 11.8, 0.6, 10.45, 1.1, 0.05, 0.05, Color(0.7, 0.15, 0.1))
+	_hd(o, 11.8, 0.85, 10.45, 0.05, 0.5, 0.05, Color(0.7, 0.15, 0.1))
 
 
 ## "VI. The Basement": the kitchen exactly as they left it that morning: the plates in the sink, Mira's drawing on the table,

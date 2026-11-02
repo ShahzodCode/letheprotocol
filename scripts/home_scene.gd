@@ -27,7 +27,7 @@ const RAID_SPOTS := [
 ## where Noah waits (they see little, take a while to be sure of what they see and aim badly down there). The other three search the rooms
 ## upstairs and hear nothing of the cellar (passive) until Noah comes up or the two are dead; then they are ordinary calm soldiers, each on his
 ## own: the bathroom one has his back to the hallway, the living-room one charges at the first shot, the bedroom one comes slowly, afraid.
-const STAIR_AT := [Vector3(19.5, 0.0, -30.5), Vector3(14.8, 0.0, -30.6)]      # at the stair door; in through the front door
+const STAIR_AT := [Vector3(19.5, 0.0, -30.5), Vector3(25.0, 0.0, -19.6)]      # at the stair door; in through the back door (mudroom, laundry, bathroom)
 const STAIR_GAP := 4.0                # seconds between the first and the second man on the stairs
 const STAIR_PACE := 0.45
 const STAIR_SIGHT := 0.55
@@ -544,6 +544,7 @@ func _tick_five(delta: float) -> void:
 	if not _second_down and _five_t >= STAIR_GAP:
 		_second_down = true
 		main._assign_role(main._spawn_enemy_at(STAIR_AT[1], "soldier"), "home_stair")
+		Sfx.play_at(self, City.HOME_BACK_OUT + Vector3(0, 1.2, 0), "boots", 4.0, 1.0, 40.0, 8.0)       # the back door: he is coming the other way
 	var stair_alive := _with_role("home_stair").size()
 	var noah_up := player.global_position.y > -0.5
 	if not _searching and _second_down and (stair_alive == 0 or noah_up):

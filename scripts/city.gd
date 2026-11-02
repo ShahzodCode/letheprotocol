@@ -61,6 +61,7 @@ const HOME_IN := Vector2(19.6, 13.6)                               # the apartme
 const HOME_H := 13.2
 const APT_H := 3.0
 const HOME_POS := Vector3(16.2, 0.0, -30.6)                        # the front door
+const HOME_BACK_OUT := Vector3(25.0, 0.0, -20.7)                   # in the yard just outside the back door (the mudroom, u 8.0..9.2)
 const CELLAR_DOOR_POS := Vector3(20.2, 0.0, -29.5)                 # hallway side, top of the stairs
 const CELLAR_FLOOR_Y := -2.7                                       # floor of the cellar (2.4 m clear height under the 0.3 m ceiling slab)
 const CELLAR_CEIL_Y := -0.3
@@ -661,6 +662,31 @@ static func _g_free_cell(g: Dictionary, p: Vector3) -> Vector2i:
 	return Vector2i(-1, -1)
 
 
+## A layer with more than one door to its parent ("alt": [{outer, via, inner}, ...], e.g. the home's front and back doors): the layer
+## dict with the link fields of the door that makes the shorter straight-line trip (`leaving` = from inside to outside).
+static func _pick_link(l: Dictionary, from: Vector3, to: Vector3, leaving: bool) -> Dictionary:
+	var alts: Array = l.get("alt", [])
+	if alts.is_empty():
+		return l
+	var best := l
+	var best_d := _link_cost(l, from, to, leaving)
+	for a in alts:
+		var d := _link_cost(a, from, to, leaving)
+		if d < best_d:
+			best_d = d
+			best = l.duplicate()
+			best["outer"] = a["outer"]
+			best["via"] = a["via"]
+			best["inner"] = a["inner"]
+	return best
+
+
+static func _link_cost(k: Dictionary, from: Vector3, to: Vector3, leaving: bool) -> float:
+	if leaving:
+		return from.distance_to(k["inner"]) + (k["outer"] as Vector3).distance_to(to)
+	return from.distance_to(k["outer"]) + (k["inner"] as Vector3).distance_to(to)
+
+
 ## Waypoints (cell centres, collinear ones dropped) from a to b inside one grid; null if there is no way (empty = same cell).
 static func _g_path(g: Dictionary, from: Vector3, to: Vector3, y: float) -> Variant:
 	var a := _g_free_cell(g, from)
@@ -726,6 +752,8 @@ static func _build_layers() -> void:
 	var home := _add_layer("home", Rect2(15.8, o.y, HOME_IN.x + 0.6, HOME_IN.y), 0.25, -0.6, 2.8, 0.0, -1,
 		Vector3(15.5, 0.0, o.y + 5.0 - 0.1), [Vector3(16.2, 0.0, o.y + 5.0)], Vector3(17.1, 0.0, o.y + 5.0),
 		[Rect2(o, HOME_IN)], 0.35)
+	# the second way in: the back door from the yard into the mudroom
+	layers[home]["alt"] = [{"outer": HOME_BACK_OUT, "via": [Vector3(HOME_BACK_OUT.x, 0.0, o.y + HOME_IN.y + 0.2)], "inner": Vector3(HOME_BACK_OUT.x, 0.0, o.y + HOME_IN.y - 0.6)}]
 	# the cellar and the stairs down to it, linked at the top of the stairs
 	_add_layer("cellar", Rect2(17.4, STAIR_HOLE.position.y, 6.0, CELLAR_RECT.end.y - STAIR_HOLE.position.y), 0.25, -4.0, -0.6, CELLAR_FLOOR_Y, home,
 		CELLAR_DOOR_POS, [Vector3(20.2, -0.5, STAIR_HOLE.position.y + 0.4), Vector3(20.2, -1.6, STAIR_HOLE.position.y + 1.7), Vector3(20.2, -2.5, STAIR_HOLE.end.y - 0.5)],
@@ -833,8 +861,8 @@ static func _route(from: Vector3, to: Vector3) -> Variant:
 		return _g_path(_grid_of(la), from, to, _y_of(la))
 	var out := PackedVector3Array()
 	if not _is_ancestor(la, lb):
-		# walk to the layer's exit, step out, carry on from the parent's link point
-		var l: Dictionary = layers[la]
+		# walk to the layer's exit (the nearer one when it has several doors), step out, carry on from the parent's link point
+		var l: Dictionary = _pick_link(layers[la], from, to, true)
 		var up: Variant = _g_path(l["grid"], from, l["inner"], l["y"])
 		if up == null:
 			return null
@@ -850,7 +878,7 @@ static func _route(from: Vector3, to: Vector3) -> Variant:
 		out.append_array(rest)
 		return out
 	# la is an ancestor of lb: get to the link point on lb's parent, step in, walk on inside
-	var lay: Dictionary = layers[lb]
+	var lay: Dictionary = _pick_link(layers[lb], from, to, false)
 	var down: Variant = _route(from, lay["outer"])
 	if down == null:
 		return null
