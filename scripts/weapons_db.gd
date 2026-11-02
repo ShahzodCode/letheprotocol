@@ -70,7 +70,36 @@ const WEAPONS := {
 		"mag_beats": [0, 1],      # which reload_beats are the viewmodel's magazine coming out and seating (Weapons._mag_times)
 		"color": Color(0.1, 0.1, 0.11),
 	},
+	"revolver": {   # the shotgun soldiers' sidearm: six heavy rounds, slow, hits like the long rifle up close
+		"name": "R-6 HEAVY REVOLVER", "short": "R-6", "slot": "pistol",
+		"carry": 1.02,             # walking and running speed while this is in hands (heavy guns slow you down)
+		"damage": 78.0, "head_mult": 2.2, "rpm": 110.0, "auto": false, "mag": 6, "spare_mags": 3, "reload_time": 2.6, "pellets": 1,
+		"spread_hip": 1.8, "spread_ads": 0.2, "spread_move": 2.0, "spread_per_shot": 1.6, "spread_max_bloom": 3.2,
+		"recoil_pitch": 4.6, "recoil_yaw": 0.8, "recoil_recover": 6.0,
+		"falloff_start": 30.0, "falloff_end": 110.0, "falloff_min": 0.55, "impulse": 6.5,
+		"ads_fov": 60.0, "ads_time": 0.17, "ads_move": 0.8, "loudness": 95.0,
+		"model": "", "rot_y": 0.0, "length": 0.32, "top_y": 0.05, "center_z": 0.0, "mirror_z": 0.0,
+		"ads_pos": Vector3(0.0, -0.057, -0.4), "color": Color(0.2, 0.19, 0.18), "glow": Color(1.0, 0.62, 0.28),
+		"sound": "magnum", "sound_pitch": 1.0, "casing": false, "tracer_w": 0.008,
+		"mag_style": "swing",     # the cylinder swings out to be loaded instead of a magazine dropping (Weapons._animate_parts)
+	},
 	# ---- weapons carried by enemies (blocky viewmodels, energy weapons: no brass, own sounds) ----
+	"shotgun": {   # some soldiers (breachers): a pump-action scattergun with a six-shell box magazine
+		"name": "SG-6 BREACHER", "short": "SG-6", "slot": "rifle",
+		"carry": 0.93,             # walking and running speed while this is in hands (heavy guns slow you down)
+		"damage": 13.0,            # per pellet
+		"head_mult": 1.6, "rpm": 72.0, "auto": false, "mag": 6, "spare_mags": 4, "reload_time": 2.7,
+		"pellets": 9,
+		"pellet_spread": 3.4,      # every pellet's own cone (degrees) on top of the aim spread
+		"spread_hip": 1.6, "spread_ads": 0.6, "spread_move": 1.4, "spread_per_shot": 0.6, "spread_max_bloom": 1.5,
+		"recoil_pitch": 3.6, "recoil_yaw": 0.9, "recoil_recover": 6.5,
+		"falloff_start": 9.0, "falloff_end": 36.0, "falloff_min": 0.18, "impulse": 1.6,
+		"ads_fov": 62.0, "ads_time": 0.2, "ads_move": 0.7, "loudness": 100.0,
+		"model": "", "rot_y": 0.0, "length": 0.9, "top_y": 0.07, "center_z": -0.18, "mirror_z": 0.0,
+		"ads_pos": Vector3(0.0, -0.062, -0.42), "color": Color(0.16, 0.15, 0.14), "glow": Color(1.0, 0.42, 0.2),
+		"sound": "shotgun", "sound_pitch": 1.0, "casing": true, "tracer_w": 0.004,
+		"pump": true,              # the forend is pumped after every shot (sound and viewmodel; the rpm is the cycle time)
+	},
 	"carbine": {   # rifleman
 		"name": "PC-24 PULSE CARBINE", "short": "PC-24", "slot": "rifle",
 		"carry": 0.98,             # walking and running speed while this is in hands (heavy guns slow you down)
@@ -155,5 +184,5 @@ const WEAPONS := {
 	},
 }
 
-const ORDER := ["pistol", "rifle", "carbine", "hmg", "railgun", "sniper", "knife", "blade"]
+const ORDER := ["pistol", "revolver", "rifle", "carbine", "shotgun", "hmg", "railgun", "sniper", "knife", "blade"]
 const SLOT_NAMES := {"pistol": "PISTOL", "rifle": "RIFLE", "melee": "MELEE"}

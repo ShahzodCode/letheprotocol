@@ -47,6 +47,8 @@ const PIVOTS := {
 	"hmg": {"mag": Vector3(0, -0.11, 0.08)},
 	"railgun": {"mag": Vector3(0, -0.09, 0.08)},
 	"sniper": {"mag": Vector3(0, -0.08, 0.05), "bolt": Vector3(0, -0.03, 0.2)},
+	"shotgun": {"mag": Vector3(0, -0.09, 0.05), "pump": Vector3(0, -0.065, -0.2)},
+	"revolver": {"mag": Vector3(-0.012, -0.05, 0.025)},       # the cylinder swings out to the left about its crane
 }
 
 static var _meshes := {}       # "id:lod" -> ArrayMesh
@@ -349,6 +351,10 @@ static func _builder_for(id: String, lod: int, split: bool = false) -> Builder:
 	match id:
 		"pistol":
 			_pistol(b, lod)
+		"revolver":
+			_revolver(b, lod, g, length)
+		"shotgun":
+			_shotgun(b, lod, g, length)
 		"rifle":
 			_rifle(b, lod, g, length)
 		"carbine":
@@ -417,6 +423,10 @@ static func grip(id: String) -> Vector3:
 	match id:
 		"pistol":
 			return Vector3(0, -0.11, 0.07)
+		"revolver":
+			return Vector3(0, -0.085, 0.085)
+		"shotgun":
+			return Vector3(0, -0.13, 0.17)
 		"rifle":
 			return Vector3(0, -0.11, 0.13)
 		"carbine":
@@ -440,6 +450,10 @@ static func support(id: String) -> Vector3:
 	match id:
 		"pistol":
 			return Vector3(-0.01, -0.12, 0.08)       # cups the right hand
+		"revolver":
+			return Vector3(-0.01, -0.095, 0.095)
+		"shotgun":
+			return Vector3(0, -0.095, -0.2)          # on the pump
 		"rifle":
 			return Vector3(0, -0.07, -0.19)
 		"carbine":
@@ -458,6 +472,10 @@ static func muzzle(id: String) -> Vector3:
 	match id:
 		"pistol":
 			return Vector3(0, -0.02, -0.15)
+		"revolver":
+			return Vector3(0, -0.018, -0.16)
+		"shotgun":
+			return Vector3(0, -0.03, -0.45)
 		"rifle":
 			return Vector3(0, -0.035, -0.475)
 		"carbine":
@@ -501,6 +519,79 @@ static func _pistol(b: Builder, lod: int) -> void:
 		b.box(Vector3(0, -0.075, 0.02), Vector3(0.006, 0.02, 0.006), DARK)                               # trigger
 		for k in 3:
 			b.box(Vector3(0, -0.1 - k * 0.02, 0.087 + k * 0.005), Vector3(0.032, 0.006, 0.03), DARK, false, Basis().rotated(Vector3.RIGHT, -0.25))   # grip texture
+
+
+## R-6 heavy revolver: a long top-ribbed barrel with an underlug, a fluted six-shot cylinder (the moving part: it swings out to be
+## loaded), a big hammer and a rust-panelled grip; the chambers glow at their backs.
+static func _revolver(b: Builder, lod: int, g: Color, length: float) -> void:
+	var rust := Color(0.4, 0.22, 0.14)
+	var segs := 12 if lod >= 2 else 8
+	b.pbox(Vector3(0, -0.02, -0.09), Vector3(0.026, 0.036, 0.14), GUNMETAL, false, Basis.IDENTITY, 0.006)     # barrel with its top rib
+	b.pbox(Vector3(0, -0.047, -0.085), Vector3(0.022, 0.02, 0.13), GUNMETAL, false, Basis.IDENTITY, 0.006)    # underlug
+	b.cyl(Vector3(0, -0.018, -0.158), 0.007, 0.006, DARK, "z", false, -1.0, 10)                                 # the bore
+	b.pbox(Vector3(0, -0.032, 0.035), Vector3(0.03, 0.06, 0.1), METAL, false, Basis.IDENTITY, 0.007)           # frame
+	b.pbox(Vector3(0, -0.085, 0.085), Vector3(0.028, 0.08, 0.04), POLY, false, Basis().rotated(Vector3.RIGHT, -0.35), 0.008)   # grip
+	b.box(Vector3(0, -0.085, 0.085), Vector3(0.031, 0.05, 0.026), rust, false, Basis().rotated(Vector3.RIGHT, -0.35))           # grip panels
+	b.box(Vector3(0, -0.006, 0.083), Vector3(0.01, 0.022, 0.014), DARK, false, Basis().rotated(Vector3.RIGHT, 0.5))            # hammer
+	for sx in [-1.0, 1.0]:
+		b.box(Vector3(sx * 0.0135, -0.026, -0.09), Vector3(0.002, 0.006, 0.12), g, true)                        # glow lines on the barrel
+	b.part("mag")
+	b.cyl(Vector3(0, -0.03, 0.025), 0.024, 0.05, METAL, "z", false, -1.0, segs)                                # cylinder
+	b.box(Vector3(-0.006, -0.042, 0.025), Vector3(0.006, 0.012, 0.03), DARK)                                  # crane
+	if lod >= 2:
+		for k in 6:
+			var a := TAU * float(k) / 6.0 + PI / 6.0
+			b.box(Vector3(cos(a) * 0.023, -0.03 + sin(a) * 0.023, 0.025), Vector3(0.006, 0.006, 0.04), DARK, false, Basis().rotated(Vector3.BACK, a))   # flutes
+			var c := TAU * float(k) / 6.0
+			b.cyl(Vector3(cos(c) * 0.014, -0.03 + sin(c) * 0.014, 0.051), 0.004, 0.002, g, "z", true, -1.0, 6)    # glowing chamber backs
+	b.part("")
+	if lod >= 2:
+		b.box(Vector3(0, -0.068, 0.045), Vector3(0.008, 0.01, 0.05), DARK)                                       # trigger guard
+		b.box(Vector3(0, -0.06, 0.05), Vector3(0.006, 0.018, 0.006), DARK)                                       # trigger
+		b.box(Vector3(0.016, -0.032, 0.06), Vector3(0.003, 0.01, 0.012), STEEL)                                  # cylinder latch
+	_sights(b, length, DARK, g)
+
+
+## SG-6 breacher: a pump-action scattergun. A wide-bored barrel under a rust heat shield, a choke with a glowing ring, a ribbed pump
+## (moving part: it is worked after every shot) on a rail under the barrel, a six-shell box magazine (moving part), pistol grip and
+## a solid stock.
+static func _shotgun(b: Builder, lod: int, g: Color, length: float) -> void:
+	var rust := Color(0.42, 0.22, 0.13)
+	var h := length * 0.5
+	var segs := 14 if lod >= 2 else 10
+	b.pbox(Vector3(0, -0.045, 0.06), Vector3(0.06, 0.09, 0.36), METAL, false, Basis.IDENTITY, 0.014)          # receiver
+	b.box(Vector3(0, -0.004, 0.06), Vector3(0.022, 0.008, 0.3), DARK)                                        # top rail
+	b.cyl(Vector3(0, -0.03, -0.28), 0.02, 0.32, DARK, "z", false, -1.0, segs)                                 # barrel
+	b.cyl(Vector3(0, -0.03, -0.43), 0.025, 0.04, METAL, "z", false, -1.0, segs)                               # choke
+	b.cyl(Vector3(0, -0.03, -0.447), 0.016, 0.004, DARK, "z", false, -1.0, segs)                              # the wide bore
+	b.cyl(Vector3(0, -0.03, -0.405), 0.028, 0.008, g, "z", true, -1.0, segs)                                  # glowing ring
+	b.pbox(Vector3(0, -0.012, -0.26), Vector3(0.03, 0.014, 0.26), rust, false, Basis.IDENTITY, 0.004)         # heat shield
+	b.box(Vector3(0, -0.07, -0.22), Vector3(0.014, 0.012, 0.3), GUNMETAL)                                    # pump rail
+	b.pbox(Vector3(0, -0.13, 0.17), Vector3(0.034, 0.1, 0.044), POLY, false, Basis().rotated(Vector3.RIGHT, -0.3), 0.008)   # pistol grip
+	b.pbox(Vector3(0, -0.065, 0.33), Vector3(0.05, 0.1, 0.2), POLY, false, Basis.IDENTITY, 0.012)            # stock
+	b.pbox(Vector3(0, -0.07, h - 0.01), Vector3(0.054, 0.13, 0.02), rust)                                    # butt pad
+	for sx in [-1.0, 1.0]:
+		b.box(Vector3(sx * 0.0305, -0.045, 0.06), Vector3(0.002, 0.01, 0.24), g, true)                         # glow lines on the receiver
+	b.part("pump")
+	b.pbox(Vector3(0, -0.07, -0.2), Vector3(0.054, 0.05, 0.16), POLY, false, Basis.IDENTITY, 0.012)          # the pump
+	if lod >= 2:
+		for z in [-0.26, -0.235, -0.21, -0.185, -0.16, -0.135]:
+			b.box(Vector3(0, -0.07, z), Vector3(0.058, 0.054, 0.008), DARK)                                   # its ribs
+	b.part("mag")
+	b.pbox(Vector3(0, -0.135, 0.05), Vector3(0.05, 0.1, 0.08), DARK, false, Basis().rotated(Vector3.RIGHT, 0.1), 0.01)     # six-shell box magazine
+	b.box(Vector3(0, -0.15, 0.007), Vector3(0.014, 0.04, 0.002), g, true, Basis().rotated(Vector3.RIGHT, 0.1))              # shell counter
+	if lod >= 2:
+		b.cyl(Vector3(0, -0.087, 0.05), 0.012, 0.06, Color(0.55, 0.12, 0.08), "z", false, -1.0, 10)          # the top shell
+	b.part("")
+	if lod >= 2:
+		for sx in [-1.0, 1.0]:
+			for z in [-0.34, -0.3, -0.26, -0.22, -0.18]:
+				b.box(Vector3(sx * 0.0152, -0.012, z), Vector3(0.002, 0.006, 0.02), g, true)                   # heat shield slots glow
+			b.box(Vector3(sx * 0.026, -0.06, 0.42), Vector3(0.004, 0.012, 0.012), STEEL)                        # sling loop
+		b.box(Vector3(0.031, -0.035, 0.1), Vector3(0.002, 0.03, 0.07), DARK)                                    # ejection port
+		b.box(Vector3(0, -0.105, 0.14), Vector3(0.01, 0.012, 0.07), DARK)                                       # trigger guard
+		b.box(Vector3(0, -0.11, 0.155), Vector3(0.008, 0.028, 0.008), DARK)                                     # trigger
+	_sights(b, length, DARK, g)
 
 
 ## PR-1 pulse rifle (the invaders' own rifle, formerly the M4): long, slim and humming. A bone-pale shroud with vent slots over a

@@ -2,6 +2,7 @@ extends Node3D
 ## Builds the city, the player, the HUD and the enemies. `-- --selftest` runs the scripted checks in tests/selftest.gd.
 ## Also: switches the battle sites' detail on and off by distance, and checks whether the player reached the goal house.
 
+const BREACHER_SHARE := 0.25          # soldiers at the campfires and on patrol who carry the SG-6 shotgun (see breacher_gun)
 const ROAMING_GROUPS := 4        # extra groups placed over the streets by class weight (the rest stand at the battle sites)
 const SPAWN_MIN_DIST := 110.0    # nobody starts closer than this to the player (beyond every sight / hearing range)
 const RESPAWN_DELAY := 25.0
@@ -329,13 +330,22 @@ func _spawn_city_enemies() -> void:
 			kinds.append(_pick_weighted(SITE_EXTRA_KINDS))
 		for k in kinds:
 			var p := City.random_point_near(_rng, centre, 8.0 if k == "marksman" else 1.5, 12.0 if k == "marksman" else 8.0)
-			var member := _spawn_enemy_at(p if p != Vector3.INF else centre, k)
+			var member := _spawn_enemy_at(p if p != Vector3.INF else centre, k, breacher_gun(k, BREACHER_SHARE))
 			member.group = si                  # the soldiers around one campfire share a group (see Enemy._alert_group)
 			member.narrow_tuning = true
 			members.append(member)
 	if City.sites.is_empty():
 		_spawn_enemy_at(City.random_spawn(_rng, player.position, SPAWN_MIN_DIST)["pos"], "soldier")
 	_spawn_roamers()
+
+
+## Breachers: some ordinary soldiers carry the SG-6 shotgun (and the R-6 revolver as their sidearm) instead of the PR-1. Picked from the
+## uid the next soldier will get, so the same city gets the same breachers without touching the layout's random numbers.
+
+func breacher_gun(kind: String, share: float) -> String:
+	if kind != "soldier":
+		return ""
+	return "shotgun" if float((_next_uid * 7919 + 13) % 100) < share * 100.0 else ""
 
 
 func _spawn_enemy_at(p: Vector3, kind: String = "soldier", weapon: String = "") -> Enemy:
@@ -365,6 +375,8 @@ func spawn_enemy_from(info: Dictionary) -> Enemy:
 	e.setup(player, info["pos"], info["kind"])
 	if String(story_roles.get(int(info["uid"]), "")) == "balcony_marksman":
 		e.set_weapon("sniper")
+	elif String(info.get("weapon", "")) != "" and String(info.get("weapon", "")) != e.weapon_id:
+		e.set_weapon(String(info["weapon"]))          # a breacher keeps his shotgun
 	e.uid = int(info["uid"])
 	e.group = int(info["group"])
 	e.health = float(info["health"])
@@ -777,7 +789,8 @@ func _spawn_roamers() -> void:
 				var near := City.random_point_near(_rng, p, 1.5, 4.5)
 				if near != Vector3.INF:
 					p = near
-			var roamer := _spawn_enemy_at(p, _pick_weighted(KIND_WEIGHTS[cls]))
+			var rk := String(_pick_weighted(KIND_WEIGHTS[cls]))
+			var roamer := _spawn_enemy_at(p, rk, breacher_gun(rk, BREACHER_SHARE))
 			roamer.group = 100 + g
 			roamer.narrow_tuning = true
 			placed.append(p)
@@ -801,7 +814,8 @@ func _spawn_roamers() -> void:
 			if not City.is_free(pos):
 				pos = spot2["pos"]
 				kind_roll = "patrol"
-		var lone := _spawn_enemy_at(pos, _pick_weighted(KIND_WEIGHTS[cls2]))
+		var lk := String(_pick_weighted(KIND_WEIGHTS[cls2]))
+		var lone := _spawn_enemy_at(pos, lk, breacher_gun(lk, BREACHER_SHARE))
 		lone.group = -1
 		lone.narrow_tuning = true
 		lone.lone_shout = true

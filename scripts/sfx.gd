@@ -77,6 +77,35 @@ static func get_sound(id: String) -> AudioStreamWAV:
 				var body := sin(TAU * (130.0 - 260.0 * t) * t) * exp(-t * 14.0)
 				var tail := lp2 * 0.25 * exp(-t * 6.0)
 				return (crack * 1.0 + body * 0.8 + tail) * 0.95)
+		"shotgun":   # the SG-6: a wide blunt blast (lots of low noise), a deep thump and a short rattling tail
+			var lps := 0.0
+			var lps2 := 0.0
+			s = _make(0.75, func(t: float) -> float:
+				var n := rng.randf_range(-1, 1)
+				lps += (n - lps) * 0.3
+				lps2 += (n - lps2) * 0.06
+				var blast := lps * exp(-t * 24.0) * 1.3
+				var thump := sin(TAU * (85.0 - 60.0 * minf(t, 0.4)) * t) * exp(-t * 11.0)
+				var tail := lps2 * exp(-t * 5.0) * 1.6
+				return (blast + thump * 0.9 + tail) * 0.85)
+		"magnum":   # the R-6 revolver: a hard bright crack, a heavy boom and a ringing tail (much louder than the M9)
+			var lpm := 0.0
+			s = _make(0.9, func(t: float) -> float:
+				var n := rng.randf_range(-1, 1)
+				lpm += (n - lpm) * 0.42
+				var crack := (n * 0.5 + lpm) * exp(-t * 45.0)
+				var boom := sin(TAU * (120.0 - 150.0 * minf(t, 0.4)) * t) * exp(-t * 9.0)
+				var ring := sin(TAU * 1450.0 * t) * exp(-t * 14.0) * 0.12
+				var tail := lpm * 0.3 * exp(-t * 4.5)
+				return (crack * 1.1 + boom * 0.95 + ring + tail) * 0.9)
+		"pump":   # racking the pump: a clack back, a clack forward
+			s = _make(0.3, func(t: float) -> float:
+				var out := 0.0
+				for at in [0.0, 0.13]:
+					var dt: float = t - float(at)
+					if dt >= 0.0:
+						out += rng.randf_range(-1, 1) * exp(-dt * 140.0) + sin(TAU * 900.0 * dt) * exp(-dt * 90.0) * 0.4
+				return out * 0.7)
 		"pulse":   # enemy energy carbine: bright zap with a falling tone
 			var lp7 := 0.0
 			s = _make(0.22, func(t: float) -> float:

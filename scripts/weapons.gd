@@ -105,6 +105,7 @@ const MAG_RISE_TIME := 0.4         # ...and the new one is brought up into the w
 const RELOAD_HAND_LEAD := 0.18     # the hand reaches for the new magazine this long before it starts to rise
 const BOLT_LIFT := 1.15            # LR-9: radians the bolt handle turns up...
 const BOLT_TRAVEL := 0.075         # ...and metres it is drawn back
+const PUMP_TRAVEL := 0.08          # SG-6: metres the pump is drawn back
 var _vk_pos := Vector3.ZERO
 var _vk_pos_v := Vector3.ZERO
 var _vk_rot := Vector3.ZERO
@@ -1165,66 +1166,97 @@ func _fire_shot() -> void:
 
 	var cam_xf := camera.global_transform
 	var origin := cam_xf.origin
-	var dir := _spread_dir(cam_xf.basis, spread_deg)
-	var to := origin + dir * 400.0
 	var space := player.get_world_3d().direct_space_state
-	var hit: Dictionary
-	var shell_v := float(s.get("bullet_speed", 0.0))
-	if shell_v > 0.0:         # a slow shell: it falls on its way, so a shot at a far target must be aimed high
-		hit = shell_trace(space, origin, dir, shell_v, 400.0)
-		to = shell_end
-	else:
-		var q := PhysicsRayQueryParameters3D.create(origin, to, Game.L_WORLD | Game.L_HITBOX)
-		q.collide_with_areas = true
-		q.collide_with_bodies = true
-		hit = space.intersect_ray(q)
-
 	var muzzle_pos: Vector3 = (muzzles[current] as Node3D).global_position
-	var end := to
-	if not hit.is_empty():
-		end = hit["position"]
-		var dist := origin.distance_to(end)
-		var collider: Object = hit["collider"]
-		if collider is Area3D and (collider as Area3D).has_meta("civilian"):
-			# a civilian: he takes the damage like anyone, you get the toast (the mission goes on)
-			var cpart: String = (collider as Area3D).get_meta("part")
-			var victim: Civilian = (collider as Area3D).get_meta("owner_civ")
-			var cdmg := float(s["damage"]) * (float(s["head_mult"]) if cpart == "head" else 1.0)
-			Game.shots_hit += 1
-			var ckilled := victim.take_hit(cdmg, cpart, dir * float(s["impulse"]), end)
-			hit_marker.emit(cpart == "head", ckilled)
-			notice = "CIVILIAN HIT"
-			notice_t = 2.5
-			Sfx.play_at(get_tree().current_scene, end, "thump", -2.0)
-		elif collider is Area3D and (collider as Area3D).has_meta("part"):
-			var part: String = (collider as Area3D).get_meta("part")
-			var enemy: Enemy = (collider as Area3D).get_meta("enemy")
+	var shell_v := float(s.get("bullet_speed", 0.0))
+	var pellets := maxi(1, int(s.get("pellets", 1)))
+	var aim_dir := _spread_dir(cam_xf.basis, spread_deg)          # where this shot goes; a shotgun's pellets fan out around it
+	var hit_any := false
+	var head_any := false
+	var killed_any := false
+	var world_sounds := 0
+	var enemy_hit := false
+	for pi in pellets:
+		var dir := aim_dir
+		if pellets > 1:
+			dir = _spread_dir(Basis.looking_at(aim_dir, cam_xf.basis.y), float(s.get("pellet_spread", 3.0)))
+		var to := origin + dir * 400.0
+		var hit: Dictionary
+		if shell_v > 0.0:         # a slow shell: it falls on its way, so a shot at a far target must be aimed high
+			hit = shell_trace(space, origin, dir, shell_v, 400.0)
+			to = shell_end
+		else:
+			var q := PhysicsRayQueryParameters3D.create(origin, to, Game.L_WORLD | Game.L_HITBOX)
+			q.collide_with_areas = true
+			q.collide_with_bodies = true
+			hit = space.intersect_ray(q)
+		var end := to
+		if not hit.is_empty():
+			end = hit["position"]
+			var dist := origin.distance_to(end)
 			var f := 1.0
 			if dist > float(s["falloff_start"]):
 				f = lerpf(1.0, float(s["falloff_min"]), clampf((dist - float(s["falloff_start"])) / (float(s["falloff_end"]) - float(s["falloff_start"])), 0.0, 1.0))
-			var dmg := float(s["damage"]) * f * (float(s["head_mult"]) if part == "head" else 1.0)
-			if part == "legs":
-				dmg *= 0.75
-			Game.shots_hit += 1
-			var killed := enemy.take_hit(dmg, part, dir * float(s["impulse"]), end)
-			hit_marker.emit(part == "head", killed)
-			Sfx.play(self, "headshot" if part == "head" else "hit", -4.0)
-			Sfx.play_at(get_tree().current_scene, end, "thump", -2.0)
-		elif collider.has_meta("hull"):
-			# the landing craft: a bright spark and a ringing hit
-			(collider.get_meta("hull") as Object).call("spark", end, hit["normal"])
-			Sfx.play_at(get_tree().current_scene, end, "hit", 2.0, 0.55, 140.0, 12.0)
-		else:
-			_spawn_impact(end, hit["normal"])
-			Sfx.play_at(get_tree().current_scene, end, "impact", -4.0, randf_range(0.9, 1.1))
-
-	_tracer(muzzle_pos, end, s.get("glow", Color(1.0, 0.85, 0.45)), float(s.get("tracer_w", 0.004)))
-	if bool(s.get("casing", true)):
+			var collider: Object = hit["collider"]
+			if collider is Area3D and (collider as Area3D).has_meta("civilian"):
+				# a civilian: he takes the damage like anyone, you get the toast (the mission goes on)
+				var cpart: String = (collider as Area3D).get_meta("part")
+				var victim: Civilian = (collider as Area3D).get_meta("owner_civ")
+				var cdmg := float(s["damage"]) * (float(s["head_mult"]) if cpart == "head" else 1.0) * (f if pellets > 1 else 1.0)
+				if not hit_any:
+					Game.shots_hit += 1
+				hit_any = true
+				var ckilled := victim.take_hit(cdmg, cpart, dir * float(s["impulse"]), end)
+				head_any = head_any or cpart == "head"
+				killed_any = killed_any or ckilled
+				notice = "CIVILIAN HIT"
+				notice_t = 2.5
+				Sfx.play_at(get_tree().current_scene, end, "thump", -2.0)
+			elif collider is Area3D and (collider as Area3D).has_meta("part"):
+				var part: String = (collider as Area3D).get_meta("part")
+				var enemy: Enemy = (collider as Area3D).get_meta("enemy")
+				var dmg := float(s["damage"]) * f * (float(s["head_mult"]) if part == "head" else 1.0)
+				if part == "legs":
+					dmg *= 0.75
+				if not hit_any:
+					Game.shots_hit += 1
+				hit_any = true
+				var killed := enemy.take_hit(dmg, part, dir * float(s["impulse"]), end)
+				head_any = head_any or part == "head"
+				killed_any = killed_any or killed
+				enemy_hit = true
+				if world_sounds < 3:
+					Sfx.play_at(get_tree().current_scene, end, "thump", -2.0)
+				world_sounds += 1
+			elif collider.has_meta("hull"):
+				# the landing craft: a bright spark and a ringing hit
+				(collider.get_meta("hull") as Object).call("spark", end, hit["normal"])
+				if world_sounds < 3:
+					Sfx.play_at(get_tree().current_scene, end, "hit", 2.0, 0.55, 140.0, 12.0)
+				world_sounds += 1
+			else:
+				_spawn_impact(end, hit["normal"])
+				if world_sounds < 3:
+					Sfx.play_at(get_tree().current_scene, end, "impact", -4.0, randf_range(0.9, 1.1))
+				world_sounds += 1
+		if pi < 4:          # a few tracers are enough to show the spread
+			_tracer(muzzle_pos, end, s.get("glow", Color(1.0, 0.85, 0.45)), float(s.get("tracer_w", 0.004)))
+	if hit_any:
+		hit_marker.emit(head_any, killed_any)
+		if enemy_hit:
+			Sfx.play(self, "headshot" if head_any else "hit", -4.0)
+	if bool(s.get("casing", true)) and not bool(s.get("pump", false)):
 		_eject_casing()
 	_muzzle_flash()
 	Sfx.play(self, String(s.get("sound", current)), -2.0, float(s.get("sound_pitch", 1.0)) * randf_range(0.97, 1.03))
 	Game.gunshot.emit(origin, float(s["loudness"]))
 	fired.emit(current)
+	if bool(s.get("pump", false)):          # the pump is worked: the empty shell flies out, the next one is chambered
+		var pumped := current
+		get_tree().create_timer(0.22).timeout.connect(func() -> void:
+			if not Game.dead and current == pumped:
+				Sfx.play(self, "pump", -4.0)
+				_eject_casing())
 	if bool(s.get("bolt", false)):          # the bolt is worked: ejects the brass and chambers the next round
 		get_tree().create_timer(0.55).timeout.connect(func() -> void:
 			if not Game.dead:
@@ -1239,7 +1271,7 @@ func _fire_shot() -> void:
 	var vk := clampf(float(s["recoil_pitch"]) / 1.5, 0.5, VM_KICK_MAX) * (1.0 - ads_k * 0.45)
 	_vk_pos_v += Vector3(_rng.randf_range(-0.12, 0.12), 0.16, 0.85) * vk
 	_vk_rot_v += Vector3(2.2, _rng.randf_range(-0.6, 0.6), _rng.randf_range(-1.0, 1.0)) * vk
-	if bool(s.get("bolt", false)):
+	if bool(s.get("bolt", false)) or bool(s.get("pump", false)):
 		bolt_t = 0.0
 
 	if int(st["ammo"]) <= 0 and reserve() > 0:
@@ -1445,7 +1477,7 @@ func _process(delta: float) -> void:
 				var jolt2 := sin(PI * seat / RELOAD_BEAT_TIME)
 				pos.y += RELOAD_BEAT_DROP * jolt2
 				rot.x += RELOAD_BEAT_DROP * 2.0 * jolt2
-	if bolt_t >= 0.0 or (reloading and parts.has(current) and (parts[current] as Dictionary).has("bolt")):
+	if bolt_t >= 0.0 or (reloading and parts.has(current) and ((parts[current] as Dictionary).has("bolt") or (parts[current] as Dictionary).has("pump"))):
 		var bp := _bolt_pose()             # working the bolt: the gun cants toward the hand and dips a little
 		pos += Vector3(-0.01 * bp.x, -0.012 * bp.x - 0.006 * bp.y, 0.01 * bp.y)
 		rot += Vector3(-0.04 * bp.x, 0.0, 0.14 * bp.x)
@@ -1522,7 +1554,7 @@ func _process(delta: float) -> void:
 	holder.rotation = holder.rotation.lerp(rot, 1.0 - exp(-(140.0 if snap else 24.0) * delta))
 	if bolt_t >= 0.0:
 		bolt_t += delta
-		if bolt_t > 1.1 or not bool(s.get("bolt", false)):
+		if bolt_t > 1.1 or not (bool(s.get("bolt", false)) or bool(s.get("pump", false))):
 			bolt_t = -1.0
 	_animate_parts()
 	_update_reload_arm()
@@ -1582,6 +1614,9 @@ func _mag_times(s: Dictionary) -> Vector2:
 ## opened and drawn back at the first `bolt_beats` and closed at the last.
 func _bolt_pose() -> Vector2:
 	var s := stats()
+	if reloading and bool(s.get("pump", false)):
+		var k2 := reload_t / maxf(0.1, reload_total())          # racked once at the end of the reload
+		return Vector2(0.0, smoothstep(0.82, 0.88, k2) * (1.0 - smoothstep(0.9, 0.97, k2)))
 	if reloading:
 		var bb: Array = s.get("bolt_beats", [])
 		var beats: Array = s.get("reload_beats", [])
@@ -1598,6 +1633,8 @@ func _bolt_pose() -> Vector2:
 	if bolt_t < 0.0:
 		return Vector2.ZERO
 	var t := bolt_t
+	if bool(s.get("pump", false)):          # the pump: back and forward, quick (x stays 0: nothing is lifted)
+		return Vector2(0.0, smoothstep(0.12, 0.24, t) * (1.0 - smoothstep(0.3, 0.44, t)))
 	return Vector2(smoothstep(0.33, 0.45, t) * (1.0 - smoothstep(0.84, 0.96, t)), smoothstep(0.46, 0.6, t) * (1.0 - smoothstep(0.68, 0.82, t)))
 
 
@@ -1613,7 +1650,12 @@ func _animate_parts() -> void:
 		var off := Vector3.ZERO
 		var tilt_x := 0.0
 		var shown := true
-		if reloading:
+		var swing_z := 0.0
+		if reloading and String(stats().get("mag_style", "")) == "swing":
+			# the revolver: the cylinder swings out to the left, stays out while the hand loads it, and is snapped back in
+			var mt2 := _mag_times(stats())
+			swing_z = 1.3 * smoothstep(mt2.x, mt2.x + 0.18, reload_t) * (1.0 - smoothstep(mt2.y - 0.12, mt2.y, reload_t))
+		elif reloading:
 			var mt := _mag_times(stats())
 			var rise_at := mt.y - MAG_RISE_TIME
 			if reload_t >= mt.x and reload_t < rise_at:
@@ -1627,8 +1669,12 @@ func _animate_parts() -> void:
 				tilt_x = -0.35 * (1.0 - e)
 		var mag_rest: Vector3 = rest["mag"]
 		mag.position = mag_rest + off
-		mag.rotation = Vector3(tilt_x, 0.0, 0.0)
+		mag.rotation = Vector3(tilt_x, 0.0, swing_z)
 		mag.visible = shown
+	if pn.has("pump"):
+		var pump: Node3D = pn["pump"]
+		var pump_rest: Vector3 = rest["pump"]
+		pump.position = pump_rest + Vector3(0.0, 0.0, PUMP_TRAVEL * _bolt_pose().y)
 	if pn.has("bolt"):
 		var bolt: Node3D = pn["bolt"]
 		var bp := _bolt_pose()

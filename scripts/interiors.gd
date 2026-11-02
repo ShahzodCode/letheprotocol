@@ -20,6 +20,7 @@ const LIGHT_ENERGY := 0.7
 
 static var shapes: Dictionary = {}        # iid -> the CollisionShape3D of the building's closed collider (World fills it)
 
+const BREACHER_SHARE := 0.6      # lone soldiers inside buildings carry the SG-6 this often (close quarters; see Main.breacher_gun)
 var main
 var player: Player
 var alive: Dictionary = {}                # iid -> {body, mesh, light}
@@ -212,7 +213,7 @@ func _activate(plan: Dictionary) -> void:
 	if bool(plan["lone"]) and not bool(plan.get("spawned", false)):
 		plan["spawned"] = true
 		var rc := (plan["inner"] as Rect2).get_center()
-		main._spawn_enemy_at(Vector3(rc.x, 0.0, rc.y), "soldier")
+		main._spawn_enemy_at(Vector3(rc.x, 0.0, rc.y), "soldier", main.breacher_gun("soldier", BREACHER_SHARE))
 
 
 func _free(iid: int) -> void:

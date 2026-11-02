@@ -85,7 +85,7 @@ static func capture(main) -> Checkpoint:
 			continue
 		alive[e.uid] = true
 		cp.enemies.append({"uid": e.uid, "kind": e.kind, "group": e.group, "pos": e.global_position, "home": e.home,
-			"health": e.health, "ammo": e.ammo, "sidearm_ammo": e.sidearm_ammo, "facing": e.facing, "wounds": e.wound_state()})
+			"health": e.health, "ammo": e.ammo, "sidearm_ammo": e.sidearm_ammo, "weapon": e.main_weapon, "facing": e.facing, "wounds": e.wound_state()})
 	for uid in main.enemy_info:
 		if not alive.has(uid):
 			cp.dead_uids.append(uid)

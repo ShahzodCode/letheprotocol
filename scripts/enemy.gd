@@ -128,6 +128,13 @@ const ARM_SIDE := 0.25              # static hit boxes only (no arm boxes): a bo
 const PISTOL_CFG := {               # the M9 in an enemy's hand: overrides his kind's shooting numbers
 	"engage": 26.0, "prefer": 12.0, "burst": 2, "interval": 0.35, "pause": 1.6, "dmg": 6.0, "spread": 3.4, "strafe": 2.0, "range": 60.0,
 }
+## Weapons that change a soldier's shooting numbers (merged over his kind's when he gets the weapon, see set_weapon). "pellets" > 1:
+## every shot is that many rays, each with its own `spread` cone and `dmg` (the player takes their sum as one hit).
+const WEAPON_CFG := {
+	"shotgun": {"engage": 18.0, "prefer": 7.0, "burst": 1, "interval": 0.0, "pause": 1.25, "dmg": 3.2, "pellets": 7, "spread": 6.0,
+		"strafe": 1.6, "range": 40.0},
+	"revolver": {"burst": 1, "pause": 1.5, "dmg": 16.0, "spread": 2.6},     # merged after PISTOL_CFG when he draws it
+}
 
 
 ## Register a dead body (enemy or civilian) and drop the oldest ones above the cap.
@@ -208,7 +215,9 @@ var mag_size := 0
 var ammo := 0
 var reloading := false
 var reload_left := 0.0
-var sidearm_ammo := -1            # >= 0: carries an M9 that drops too
+var sidearm_ammo := -1            # >= 0: carries a sidearm (sidearm_id) that drops too
+var sidearm_id := "pistol"        # the M9; breachers (shotgun soldiers) carry the R-6 revolver
+var main_weapon := ""             # the long gun he started with (kept after he draws the sidearm: checkpoints save it)
 var leg_wounds := 0               # leg hits taken (slower, limps: LEG_SPEED)
 var arm_wounds := 0               # arm hits taken (aims worse, holds the arm: ARM_SPREAD)
 var leg_side := 0.0               # +1 left, -1 right: the first hurt leg / arm
@@ -312,6 +321,7 @@ func setup(p: Player, home_pos: Vector3, kind_id: String = "soldier") -> void:
 	stamina = max_stamina
 	mag_size =int(WeaponsDB.WEAPONS[weapon_id]["mag"]) if weapon_id != "" else 0
 	ammo = mag_size
+	main_weapon = weapon_id
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	if bool(cfg.get("sidearm", false)) and rng.randf() < 0.5:
@@ -620,7 +630,7 @@ func _drop_loot() -> void:
 		for i in 2:
 			Pickup.spawn_ammo(scene, spots[1 + i], weapon_id, int(round(mag_size * _rng.randf_range(0.5, 1.0))))
 	if sidearm_ammo >= 0:
-		Pickup.spawn_weapon(scene, spots[3], "pistol", sidearm_ammo)
+		Pickup.spawn_weapon(scene, spots[3], sidearm_id, sidearm_ammo)
 	if grenade_drop >= 0:
 		for gi in grenade_drop:                    # the stragglers of the chase: guaranteed, and they stay until taken
 			var gp := Pickup.spawn_grenade(scene, global_position + Vector3(cos(float(gi) * 2.4), 0, sin(float(gi) * 2.4)) * 0.9)
@@ -680,20 +690,22 @@ func _draw_sidearm(fumble: bool) -> void:
 	disarmed = true
 	_disarm_rolled = true
 	sidearm_ammo = -1
-	set_weapon("pistol")
+	set_weapon(sidearm_id)
 	ammo = maxi(rounds, 1)
 	reloading = false
 	burst_left = 0
 	_cancel_charge()
 	cfg = cfg.duplicate()
 	cfg.merge(PISTOL_CFG, true)
+	cfg.erase("pellets")
+	cfg.merge(WEAPON_CFG.get(sidearm_id, {}), true)
 	for c in gun.get_children():
 		c.queue_free()
-	var gm := GunModels.build("pistol", 1)
-	gm.position = -GunModels.grip("pistol")
+	var gm := GunModels.build(sidearm_id, 1)
+	gm.position = -GunModels.grip(sidearm_id)
 	gun.add_child(gm)
 	muzzle = Node3D.new()
-	muzzle.position = GunModels.muzzle("pistol")
+	muzzle.position = GunModels.muzzle(sidearm_id)
 	gm.add_child(muzzle)
 	_hold_gun()
 
@@ -1624,6 +1636,16 @@ func set_weapon(id: String) -> void:
 	weapon_id = id
 	mag_size = int(WeaponsDB.WEAPONS[id]["mag"])
 	ammo = mag_size
+	if disarmed:
+		return                     # the sidearm: _draw_sidearm sets its numbers
+	main_weapon = id
+	if WEAPON_CFG.has(id):
+		cfg = cfg.duplicate()
+		cfg.merge(WEAPON_CFG[id], true)
+	if id == "shotgun":           # a breacher: always carries the heavy revolver
+		sidearm_id = "revolver"
+		if sidearm_ammo < 0:
+			sidearm_ammo = randi_range(3, int(WeaponsDB.WEAPONS["revolver"]["mag"]))
 
 
 ## Nothing about him moves: calm (waiting at a post or sitting), no steps, no flinch, nobody to shoot at, rifle not spinning.
@@ -1921,28 +1943,36 @@ func _fire_bolt() -> void:
 	else:
 		var hspeed := Vector2(player.velocity.x, player.velocity.z).length()
 		spread = deg_to_rad(float(cfg["spread"])) * (1.0 + hspeed * 0.12) * aim_scale * float(ARM_SPREAD[mini(arm_wounds, 2)])
-	var dir := (target - from).normalized()
-	if spread > 0.0:
-		var ax := dir.cross(Vector3.UP)
-		ax = ax.normalized() if ax.length() > 0.01 else Vector3.RIGHT
-		var ay := ax.cross(dir)
-		var rot := _rng.randf() * TAU
-		var ang := spread * sqrt(_rng.randf())
-		dir = (dir + (ax * cos(rot) + ay * sin(rot)) * tan(ang)).normalized()
-	var end := from + dir * float(cfg["range"])
-	var q := PhysicsRayQueryParameters3D.create(from, end, Game.L_WORLD | Game.L_PLAYER | (Game.L_HITBOX if at_civilian else 0))
-	q.collide_with_areas = at_civilian
-	var hit := get_world_3d().direct_space_state.intersect_ray(q)
-	if not hit.is_empty():
-		end = hit["position"]
-		var col: Object = hit["collider"]
-		if col == player:
-			player.take_damage(float(cfg["dmg"]), global_position, String(KILLED_BY.get(kind, "SHOT")))
-		elif col is Area3D and (col as Area3D).has_meta("civilian"):
-			var victim: Civilian = (col as Area3D).get_meta("owner_civ")
-			if is_instance_valid(victim):
-				victim.take_hit(float(cfg["dmg"]) * 2.0, String((col as Area3D).get_meta("part")), (end - from).normalized() * 3.0, end)
-	_bolt(from, end)
+	var aim_dir := (target - from).normalized()
+	var pellets := maxi(1, int(cfg.get("pellets", 1)))
+	var to_player := 0.0               # a shotgun's pellets that hit the player add up to one hit
+	for pi in pellets:
+		var dir := aim_dir
+		if spread > 0.0:
+			var ax := dir.cross(Vector3.UP)
+			ax = ax.normalized() if ax.length() > 0.01 else Vector3.RIGHT
+			var ay := ax.cross(dir)
+			var rot := _rng.randf() * TAU
+			var ang := spread * sqrt(_rng.randf())
+			dir = (dir + (ax * cos(rot) + ay * sin(rot)) * tan(ang)).normalized()
+		var end := from + dir * float(cfg["range"])
+		var q := PhysicsRayQueryParameters3D.create(from, end, Game.L_WORLD | Game.L_PLAYER | (Game.L_HITBOX if at_civilian else 0))
+		q.collide_with_areas = at_civilian
+		var hit := get_world_3d().direct_space_state.intersect_ray(q)
+		if not hit.is_empty():
+			end = hit["position"]
+			var col: Object = hit["collider"]
+			if col == player:
+				to_player += float(cfg["dmg"])
+			elif col is Area3D and (col as Area3D).has_meta("civilian"):
+				var victim: Civilian = (col as Area3D).get_meta("owner_civ")
+				if is_instance_valid(victim):
+					victim.take_hit(float(cfg["dmg"]) * 2.0, String((col as Area3D).get_meta("part")), (end - from).normalized() * 3.0, end)
+		if pi < 4:
+			_bolt(from, end)
+	if to_player > 0.0:
+		var cause := "BLASTED BY A BREACHER" if weapon_id == "shotgun" else String(KILLED_BY.get(kind, "SHOT"))
+		player.take_damage(to_player, global_position, cause)
 	if model.layer != null:
 		model.layer.kick(1.0)
 	if not at_civilian:
@@ -2008,7 +2038,7 @@ func _animate(delta: float, speed: float) -> void:
 func _hold_gun() -> void:
 	if model.layer == null or gun.get_parent() != model.hand_node:
 		return
-	var wid := "pistol" if disarmed else weapon_id
+	var wid := weapon_id
 	var sup := GunModels.support(wid)
 	model.layer.hold_gun(gun.transform, Vector3.INF if (sup == Vector3.INF or kind == "blade") else sup - GunModels.grip(wid) + LEFT_WRIST)
 
@@ -2157,8 +2187,8 @@ func _animate_soldier(delta: float, speed: float, aiming: bool) -> void:
 	gun.rotation = gun.rotation.lerp(gr, kk)
 	_aim_pose = 1.0 if aiming else 0.0
 	var hand_r := m.skeleton.to_local(gun.global_position)
-	var sup := GunModels.support("pistol" if disarmed else weapon_id)
-	var hand_l := m.skeleton.to_local(gun.to_global(Vector3(0.0, -0.05, -0.3) if sup == Vector3.INF else sup - GunModels.grip("pistol" if disarmed else weapon_id) + LEFT_WRIST))
+	var sup := GunModels.support(weapon_id)
+	var hand_l := m.skeleton.to_local(gun.to_global(Vector3(0.0, -0.05, -0.3) if sup == Vector3.INF else sup - GunModels.grip(weapon_id) + LEFT_WRIST))
 	m.ik_arm("R", hand_r, Vector3(-0.6, -1.0, -0.4))
 	m.ik_arm("L", hand_l, Vector3(0.6, -1.0, -0.4))
 
