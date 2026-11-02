@@ -130,6 +130,8 @@ func _draw() -> void:
 		var col := Color(0.2, 0.21, 0.22) if cls == "avenue" else (Color(0.17, 0.18, 0.19) if cls in ["street", "plaza"] else Color(0.14, 0.15, 0.155))
 		draw_rect(_rect(st["rect"], xf), col)
 	draw_rect(_rect(City.PARK_RECT, xf), Color(0.12, 0.22, 0.13))
+	for gp in CityParks.PARKS:
+		draw_rect(_rect((gp as Rect2).grow(-CityParks.RIM), xf), Color(0.12, 0.22, 0.13))
 	draw_rect(_rect(City.COURT_RECT, xf), Color(0.16, 0.16, 0.15))
 	for b in City.buildings:
 		var border := bool(b.get("border", false))

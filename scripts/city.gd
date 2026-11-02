@@ -183,6 +183,16 @@ static func generate(seed_value: int = 2077) -> void:
 				CityPlaces.park_block()
 			elif _same_rect(block, COURT_BLOCK):
 				CityPlaces.court_block()
+			elif CityParks.is_park(block) >= 0:
+				# subdivide anyway and drop the result: the random stream (and so the rest of the city) does not change
+				var nb := buildings.size()
+				var ns := streets.size()
+				var nl := lots.size()
+				_subdivide(rng, block, 0)
+				buildings.resize(nb)
+				streets.resize(ns)
+				lots.resize(nl)
+				CityParks.build(block, CityParks.is_park(block), seed_value)
 			else:
 				_subdivide(rng, block, 0)
 	_make_lanes(rng)
